@@ -3,8 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Sparkles, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useApp } from '@/lib/app-context'
-import { buildSystemPrompt, getSuggestedQuestions, streamAIResponse } from '@/lib/fitness-ai'
+import { streamAIResponse } from '@/lib/fitness-ai'
 
 interface ChatMessage {
   id: string
@@ -13,15 +12,19 @@ interface ChatMessage {
   timestamp: Date
 }
 
-export function ChatPage() {
-  const app = useApp()
-  const { settings, riseScore, streak, getTodayTotals, bodyPRs, questState } = app
+const SUGGESTED_QUESTIONS = [
+  "How can I help you today?",
+  "What are you working on?",
+  "Got any questions for me?",
+  "Need help with anything?",
+]
 
+export function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       role: 'assistant',
-      content: `Hey ${settings.name || 'there'}! 👋 I'm your personal Rise coach — powered by real AI, not scripts.\n\nI know your stats: you're ${streak} days into your streak, sitting at ${riseScore} Rise XP, and your goal is to **${settings.fitnessGoal.replace('_', ' ')}**.\n\nAsk me anything — programming, nutrition, form, supplements, how to break through a plateau. I've got full context on your profile. What's on your mind?`,
+      content: `Hey! 👋 I'm your AI assistant. Ask me anything!`,
       timestamp: new Date(),
     },
   ])
@@ -32,13 +35,10 @@ export function ChatPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const suggested = getSuggestedQuestions(settings.fitnessGoal)
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isStreaming])
 
-  // Build conversation history for the API (exclude the first greeting)
   const getApiHistory = (msgs: ChatMessage[]) =>
     msgs.slice(1).map(m => ({ role: m.role, content: m.content }))
 
@@ -58,7 +58,6 @@ export function ChatPage() {
     setInput('')
     setIsStreaming(true)
 
-    // Placeholder assistant message we'll stream into
     const assistantId = (Date.now() + 1).toString()
     setMessages(prev => [
       ...prev,
@@ -68,19 +67,8 @@ export function ChatPage() {
     abortRef.current = new AbortController()
 
     try {
-      const todayTotals = getTodayTotals()
-      const systemPrompt = buildSystemPrompt({
-        settings,
-        riseScore,
-        streak,
-        todayTotals,
-        bodyPRs,
-        questState,
-      })
-
       await streamAIResponse(
         {
-          systemPrompt,
           history: [...history, { role: 'user', content: text.trim() }],
         },
         (chunk) => {
@@ -95,7 +83,7 @@ export function ChatPage() {
     } catch (err: any) {
       if (err.name === 'AbortError') return
       console.error('AI error:', err)
-      setError('Something went wrong. Check your API key in the environment and try again.')
+      setError('Something went wrong. Try again.')
       setMessages(prev => prev.filter(m => m.id !== assistantId))
     } finally {
       setIsStreaming(false)
@@ -153,10 +141,10 @@ export function ChatPage() {
           <Bot className="h-5 w-5 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="font-bold text-foreground">Rise Coach</h1>
+          <h1 className="font-bold text-foreground">AI Assistant</h1>
           <p className="flex items-center gap-1 text-xs text-green-500">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
-            Online · Knows your full profile
+            Online
           </p>
         </div>
       </div>
@@ -179,7 +167,6 @@ export function ChatPage() {
               msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
             )}
           >
-            {/* Avatar */}
             <div
               className={cn(
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
@@ -193,7 +180,6 @@ export function ChatPage() {
               )}
             </div>
 
-            {/* Bubble */}
             <div
               className={cn(
                 'max-w-[82%] rounded-2xl px-4 py-3 text-sm',
@@ -204,25 +190,14 @@ export function ChatPage() {
             >
               <div className="space-y-1">{renderContent(msg.content)}</div>
               {msg.content && (
-                <p
-                  className={cn(
-                    'mt-1.5 text-[10px]',
-                    msg.role === 'assistant'
-                      ? 'text-muted-foreground'
-                      : 'text-primary-foreground/70'
-                  )}
-                >
-                  {msg.timestamp.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                <p className={cn('mt-1.5 text-[10px]', msg.role === 'assistant' ? 'text-muted-foreground' : 'text-primary-foreground/70')}>
+                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               )}
             </div>
           </div>
         ))}
 
-        {/* Suggested questions */}
         {showSuggestions && !isStreaming && (
           <div className="mt-2">
             <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -230,7 +205,7 @@ export function ChatPage() {
               Suggested questions
             </p>
             <div className="flex flex-wrap gap-2">
-              {suggested.map(q => (
+              {SUGGESTED_QUESTIONS.map(q => (
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
@@ -254,7 +229,7 @@ export function ChatPage() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask your fitness coach..."
+            placeholder="Ask me anything..."
             rows={1}
             className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             style={{ maxHeight: 120 }}
@@ -273,7 +248,7 @@ export function ChatPage() {
           </button>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-          Real AI coach · Powered by Claude
+          Powered by Claude
         </p>
       </div>
     </div>

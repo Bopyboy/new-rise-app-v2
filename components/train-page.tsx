@@ -5,12 +5,13 @@ import { useApp } from '@/lib/app-context'
 import { generateFitnessPlan } from '@/lib/fitness-plans'
 import { WorkoutPage } from '@/components/workout-page'
 import { BodyChartPage } from '@/components/body-chart-page'
+import { BodyCompositionPage } from '@/components/body-composition-page'
 import { WorkoutSession } from '@/components/workout-session'
 import { WorkoutDay } from '@/lib/types'
-import { Dumbbell, Activity, Sparkles, CalendarDays, Play } from 'lucide-react'
+import { Dumbbell, Activity, Sparkles, CalendarDays, Scale, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type TrainSection = 'plan' | 'workouts' | 'body'
+type TrainSection = 'plan' | 'workouts' | 'body' | 'composition'
 
 export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void }) {
   const { settings, bodyPRs, workoutSplit } = useApp()
@@ -37,6 +38,7 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
     { id: 'plan', label: 'My Plan', icon: Sparkles },
     { id: 'workouts', label: 'Workouts', icon: Dumbbell },
     { id: 'body', label: 'Body', icon: Activity },
+    { id: 'composition', label: 'Body Fat', icon: Scale },
   ]
 
   // ── Live session view ──────────────────────────────────────────────────────
@@ -196,6 +198,7 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
         />
       )}
       {section === 'body' && <BodyChartPage />}
+      {section === 'composition' && <BodyCompositionPage />}
     </div>
   )
 }

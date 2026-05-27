@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2, X, Search, ChevronLeft, Edit3, Check, Play } from 'lucide-react'
+import { Plus, Trash2, X, Search, ChevronLeft, Edit3, Check, Play, BookOpen } from 'lucide-react'
 import { useApp } from '@/lib/app-context'
 import { EXERCISE_CATEGORIES } from '@/lib/exercise-data'
+import { ExerciseGuideModal } from '@/components/exercise-guide-modal'
 import { cn } from '@/lib/utils'
 
 export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: boolean; onStartSession?: (day: import('@/lib/types').WorkoutDay) => void }) {
@@ -17,6 +18,7 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
   const [editingExercise, setEditingExercise] = useState<{ dayIndex: number; exerciseId: string } | null>(null)
   const [editSets, setEditSets] = useState('')
   const [editReps, setEditReps] = useState('')
+  const [guideExercise, setGuideExercise] = useState<string | null>(null)
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' })
 
@@ -80,12 +82,10 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
       ) || []
     : []
 
-  // Exercise Library Modal
   if (showLibrary) {
     return (
       <div className="fixed inset-0 z-50 bg-background">
         <div className="flex h-full flex-col">
-          {/* Header */}
           <div className="flex items-center gap-3 border-b border-border px-4 py-4">
             <button
               onClick={selectedCategory ? () => setSelectedCategory(null) : closeLibrary}
@@ -100,7 +100,6 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
             </h1>
           </div>
 
-          {/* Search */}
           {selectedCategory && (
             <div className="border-b border-border px-4 py-3">
               <div className="relative">
@@ -116,10 +115,8 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
             </div>
           )}
 
-          {/* Content */}
           <div className="flex-1 overflow-y-auto p-4">
             {!selectedCategory ? (
-              // Category Grid
               <div className="grid grid-cols-2 gap-3">
                 {EXERCISE_CATEGORIES.map(category => (
                   <button
@@ -136,13 +133,11 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                 ))}
               </div>
             ) : (
-              // Exercise List
               <div className="space-y-2">
                 {filteredExercises.map((exercise) => (
-                  <button
+                  <div
                     key={exercise.name}
-                    onClick={() => addExercise(exercise.name, exercise.category, exercise.imageUrl)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-secondary"
+                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3"
                   >
                     <img
                       src={exercise.imageUrl}
@@ -152,16 +147,24 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                     <span className="flex-1 text-left font-medium text-foreground">
                       {exercise.name}
                     </span>
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500">
+                    <button
+                      onClick={() => setGuideExercise(exercise.name)}
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-muted-foreground hover:text-primary"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => addExercise(exercise.name, exercise.category, exercise.imageUrl)}
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500"
+                    >
                       <Plus className="h-4 w-4 text-white" />
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Manual Entry */}
           {selectedCategory && (
             <div className="border-t border-border p-4">
               {showManualEntry ? (
@@ -182,10 +185,7 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                     Add
                   </button>
                   <button
-                    onClick={() => {
-                      setShowManualEntry(false)
-                      setManualName('')
-                    }}
+                    onClick={() => { setShowManualEntry(false); setManualName('') }}
                     className="rounded-xl bg-secondary px-4 py-3"
                   >
                     <X className="h-5 w-5" />
@@ -227,7 +227,6 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                 isToday ? 'border-primary' : 'border-border'
               )}
             >
-              {/* Day Header */}
               <div className="flex items-center gap-3 p-4">
                 <div
                   className="flex h-12 w-12 items-center justify-center rounded-xl text-sm font-bold text-white"
@@ -248,7 +247,6 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                 </div>
               </div>
 
-              {/* Exercises */}
               {day.exercises.length > 0 && (
                 <div className="border-t border-border px-4 pb-3">
                   <div className="divide-y divide-border">
@@ -258,19 +256,14 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                         editingExercise?.exerciseId === exercise.id
 
                       return (
-                        <div
-                          key={exercise.id}
-                          className="flex items-center gap-3 py-3"
-                        >
+                        <div key={exercise.id} className="flex items-center gap-3 py-3">
                           <img
                             src={exercise.imageUrl}
                             alt={exercise.name}
                             className="h-10 w-10 rounded-lg object-cover"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-foreground truncate">
-                              {exercise.name}
-                            </p>
+                            <p className="font-medium text-foreground truncate">{exercise.name}</p>
                             {isEditing ? (
                               <div className="flex items-center gap-2 mt-1">
                                 <input
@@ -304,9 +297,13 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                           {!isEditing && (
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() =>
-                                  startEditing(dayIndex, exercise.id, exercise.sets, exercise.reps)
-                                }
+                                onClick={() => setGuideExercise(exercise.name)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
+                              >
+                                <BookOpen className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => startEditing(dayIndex, exercise.id, exercise.sets, exercise.reps)}
                                 className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                               >
                                 <Edit3 className="h-4 w-4" />
@@ -326,25 +323,18 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
                 </div>
               )}
 
-              {/* Empty State */}
               {day.exercises.length === 0 && day.name !== 'Rest Day' && (
                 <div className="border-t border-border px-4 py-4">
-                  <p className="text-center text-sm text-muted-foreground">
-                    No exercises yet
-                  </p>
+                  <p className="text-center text-sm text-muted-foreground">No exercises yet</p>
                 </div>
               )}
 
-              {/* Rest Day */}
               {day.name === 'Rest Day' && (
                 <div className="border-t border-border px-4 py-4">
-                  <p className="text-center text-sm text-muted-foreground">
-                    Take a well-deserved rest!
-                  </p>
+                  <p className="text-center text-sm text-muted-foreground">Take a well-deserved rest!</p>
                 </div>
               )}
 
-              {/* Action Buttons */}
               {day.name !== 'Rest Day' && (
                 <div className="flex gap-2 px-4 pb-4">
                   {onStartSession && (
@@ -369,6 +359,13 @@ export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: b
           )
         })}
       </div>
+
+      {/* Form Guide Modal */}
+      <ExerciseGuideModal
+        exerciseName={guideExercise ?? ''}
+        open={guideExercise !== null}
+        onClose={() => setGuideExercise(null)}
+      />
     </div>
   )
 }
