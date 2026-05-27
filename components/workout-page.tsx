@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2, X, Search, ChevronLeft, Edit3, Check } from 'lucide-react'
+import { Plus, Trash2, X, Search, ChevronLeft, Edit3, Check, Play } from 'lucide-react'
 import { useApp } from '@/lib/app-context'
 import { EXERCISE_CATEGORIES } from '@/lib/exercise-data'
 import { cn } from '@/lib/utils'
 
-export function WorkoutPage({ embedded = false }: { embedded?: boolean }) {
+export function WorkoutPage({ embedded = false, onStartSession }: { embedded?: boolean; onStartSession?: (day: import('@/lib/types').WorkoutDay) => void }) {
   const { workoutSplit, addExerciseToDay, removeExerciseFromDay, updateExercise } = useApp()
   const [showLibrary, setShowLibrary] = useState(false)
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null)
@@ -344,15 +344,24 @@ export function WorkoutPage({ embedded = false }: { embedded?: boolean }) {
                 </div>
               )}
 
-              {/* Add Workout Button */}
+              {/* Action Buttons */}
               {day.name !== 'Rest Day' && (
-                <div className="px-4 pb-4">
+                <div className="flex gap-2 px-4 pb-4">
+                  {onStartSession && (
+                    <button
+                      onClick={() => onStartSession(day)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                    >
+                      <Play className="h-4 w-4 fill-primary-foreground" />
+                      Start
+                    </button>
+                  )}
                   <button
                     onClick={() => openLibrary(dayIndex)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 py-3 font-medium text-white transition-colors hover:bg-green-600"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-green-500 py-3 font-medium text-white transition-colors hover:bg-green-600"
                   >
                     <Plus className="h-4 w-4" />
-                    Add Workout
+                    Add Exercise
                   </button>
                 </div>
               )}

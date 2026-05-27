@@ -5,7 +5,9 @@ import { useApp } from '@/lib/app-context'
 import { generateFitnessPlan } from '@/lib/fitness-plans'
 import { WorkoutPage } from '@/components/workout-page'
 import { BodyChartPage } from '@/components/body-chart-page'
-import { Dumbbell, Activity, Sparkles, CalendarDays } from 'lucide-react'
+import { WorkoutSession } from '@/components/workout-session'
+import { WorkoutDay } from '@/lib/types'
+import { Dumbbell, Activity, Sparkles, CalendarDays, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type TrainSection = 'plan' | 'workouts' | 'body'
@@ -13,6 +15,7 @@ type TrainSection = 'plan' | 'workouts' | 'body'
 export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void }) {
   const { settings, bodyPRs, workoutSplit } = useApp()
   const [section, setSection] = useState<TrainSection>('plan')
+  const [activeSession, setActiveSession] = useState<WorkoutDay | null>(null)
 
   const plan = useMemo(
     () =>
@@ -28,11 +31,23 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
     [settings, bodyPRs, workoutSplit]
   )
 
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' })
+
   const tabs: { id: TrainSection; label: string; icon: typeof Sparkles }[] = [
     { id: 'plan', label: 'My Plan', icon: Sparkles },
     { id: 'workouts', label: 'Workouts', icon: Dumbbell },
     { id: 'body', label: 'Body', icon: Activity },
   ]
+
+  // ── Live session view ──────────────────────────────────────────────────────
+  if (activeSession) {
+    return (
+      <WorkoutSession
+        day={activeSession}
+        onClose={() => setActiveSession(null)}
+      />
+    )
+  }
 
   return (
     <div className="space-y-4 pb-20">
@@ -93,28 +108,76 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
             <span className="text-sm font-medium text-primary">Open →</span>
           </button>
 
+          {/* Workout days with Start buttons */}
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2">
               <Dumbbell className="h-4 w-4 text-primary" />
               <h2 className="font-semibold text-foreground">Custom workout split</h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{plan.workoutNote}</p>
+
             <div className="mt-3 space-y-3">
-              {plan.workoutDays.map(day => (
-                <div key={day.day} className="rounded-xl bg-secondary/40 p-3">
-                  <p className="font-semibold text-foreground">
-                    {day.day} — {day.name}
-                  </p>
-                  <ul className="mt-2 space-y-1">
-                    {day.exercises.map((ex, i) => (
-                      <li key={i} className="text-sm text-muted-foreground">
-                        {ex.name} · {ex.sets}×{ex.reps}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              {workoutSplit.map((day, i) => {
+                const isToday = day.day === today
+                const isRest = day.name === 'Rest Day'
+
+                return (
+                  <div
+                    key={day.day}
+                    className={cn(
+                      'rounded-xl p-3',
+                      isToday ? 'border border-primary/40 bg-primary/5' : 'bg-secondary/40'
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className="font-semibold text-foreground">
+                          {day.day}
+                          {isToday && (
+                            <span className="ml-2 rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-bold text-primary">
+                              TODAY
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{day.name}</p>
+                      </div>
+
+                      {!isRest && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveSession(day)}
+                          className={cn(
+                            'flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors',
+                            isToday
+                              ? 'bg-primary text-primary-foreground'
+                              : 'border border-border bg-card text-foreground hover:border-primary/40'
+                          )}
+                        >
+                          <Play className="h-3 w-3 fill-current" />
+                          Start
+                        </button>
+                      )}
+                    </div>
+
+                    {!isRest && day.exercises.length > 0 && (
+                      <ul className="mt-2 space-y-0.5">
+                        {day.exercises.slice(0, 3).map((ex, ei) => (
+                          <li key={ei} className="text-xs text-muted-foreground">
+                            {ex.name} · {ex.sets}×{ex.reps}
+                          </li>
+                        ))}
+                        {day.exercises.length > 3 && (
+                          <li className="text-xs text-muted-foreground">
+                            +{day.exercises.length - 3} more
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })}
             </div>
+
             <button
               type="button"
               onClick={() => setSection('workouts')}
@@ -126,7 +189,12 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
         </div>
       )}
 
-      {section === 'workouts' && <WorkoutPage embedded />}
+      {section === 'workouts' && (
+        <WorkoutPage
+          embedded
+          onStartSession={(day: WorkoutDay) => setActiveSession(day)}
+        />
+      )}
       {section === 'body' && <BodyChartPage />}
     </div>
   )
