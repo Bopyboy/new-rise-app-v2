@@ -54,7 +54,6 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     snacks: 'Snacks',
   }
 
-  // Animate scan line for barcode
   useEffect(() => {
     if (mode !== 'barcode-scan') return
     const interval = setInterval(() => {
@@ -63,32 +62,24 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     return () => clearInterval(interval)
   }, [mode])
 
-  // Start camera for photo
   const startPhotoCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       })
       setCameraStream(stream)
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream
     } catch {
       setErrorMsg('Could not access camera. Please allow camera access or upload a photo instead.')
       setMode('error')
     }
   }, [])
 
-  // Start camera for barcode
   const startBarcodeCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       setBarcodeStream(stream)
-      if (barcodeVideoRef.current) {
-        barcodeVideoRef.current.srcObject = stream
-      }
+      if (barcodeVideoRef.current) barcodeVideoRef.current.srcObject = stream
       startBarcodeScan(stream)
     } catch {
       // Camera not available, show manual input
@@ -100,7 +91,6 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     if (mode === 'barcode-scan') startBarcodeCamera()
   }, [mode, startPhotoCamera, startBarcodeCamera])
 
-  // Stop all streams on unmount
   useEffect(() => {
     return () => {
       cameraStream?.getTracks().forEach(t => t.stop())
@@ -118,36 +108,72 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     setBarcodeStream(null)
   }
 
-  // Use BarcodeDetector API if available
+  // Barcode scanning — native BarcodeDetector (Chrome/Android) with canvas+ZXing fallback for iOS/Safari
   const startBarcodeScan = async (stream: MediaStream) => {
-    if (!('BarcodeDetector' in window)) return
-
-    const BarcodeDetectorAPI = (window as any).BarcodeDetector
-    const detector = new BarcodeDetectorAPI({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'] })
-
     const video = barcodeVideoRef.current
     if (!video) return
 
-    const scan = async () => {
-      if (!video.videoWidth) {
-        setTimeout(scan, 200)
-        return
+    await new Promise<void>(resolve => {
+      if (video.readyState >= 2) { resolve(); return }
+      video.onloadeddata = () => resolve()
+      setTimeout(resolve, 2000)
+    })
+
+    if ('BarcodeDetector' in window) {
+      const BarcodeDetectorAPI = (window as any).BarcodeDetector
+      let supported: string[] = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39']
+      try { supported = await BarcodeDetectorAPI.getSupportedFormats() } catch { /* use defaults */ }
+      const detector = new BarcodeDetectorAPI({ formats: supported })
+
+      let scanning = true
+      const scan = async () => {
+        if (!scanning || !stream.active) return
+        if (!video.videoWidth) { setTimeout(scan, 200); return }
+        try {
+          const barcodes = await detector.detect(video)
+          if (barcodes.length > 0) {
+            scanning = false
+            stopBarcodeCamera()
+            await lookupBarcode(barcodes[0].rawValue)
+            return
+          }
+        } catch { /* continue */ }
+        if (scanning && stream.active) requestAnimationFrame(scan)
       }
+      setTimeout(scan, 500)
+    } else {
+      // Fallback for iOS/Safari using ZXing
       try {
-        const barcodes = await detector.detect(video)
-        if (barcodes.length > 0) {
-          const code = barcodes[0].rawValue
-          stopBarcodeCamera()
-          await lookupBarcode(code)
-          return
+        const ZXingModule = await (Function('return import("https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/esm/index.js")')() as Promise<any>)
+        const codeReader = new ZXingModule.BrowserMultiFormatReader()
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        let scanning = true
+
+        const scanFrame = async () => {
+          if (!scanning || !stream.active) return
+          if (!video.videoWidth) { setTimeout(scanFrame, 300); return }
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
+          ctx?.drawImage(video, 0, 0)
+          try {
+            const result = await codeReader.decodeFromCanvas(canvas)
+            if (result) {
+              scanning = false
+              stopBarcodeCamera()
+              await lookupBarcode(result.getText())
+              return
+            }
+          } catch { /* NotFoundException is normal when no barcode in frame */ }
+          if (scanning && stream.active) setTimeout(scanFrame, 300)
         }
-      } catch { /* continue scanning */ }
-      if (stream.active) requestAnimationFrame(scan)
+        setTimeout(scanFrame, 800)
+      } catch {
+        // ZXing unavailable — manual input still works
+      }
     }
-    setTimeout(scan, 500)
   }
 
-  // Capture photo from camera
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return
     const video = videoRef.current
@@ -163,7 +189,6 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     analyzePhoto(dataUrl)
   }
 
-  // Handle file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -177,14 +202,13 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     reader.readAsDataURL(file)
   }
 
-  // Analyze photo with AI
   const analyzePhoto = async (dataUrl: string) => {
     setIsLoading(true)
     try {
       const base64 = dataUrl.split(',')[1]
       const mediaType = dataUrl.split(';')[0].split(':')[1]
 
-      const res = await fetch('/api/scan-food', {
+      const res = await fetch('/api/chat/scan-food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mediaType }),
@@ -212,12 +236,11 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     }
   }
 
-  // Lookup barcode
   const lookupBarcode = async (code: string) => {
     setBarcodeValue(code)
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/barcode?barcode=${encodeURIComponent(code)}`)
+      const res = await fetch(`/api/chat/barcode?barcode=${encodeURIComponent(code)}`)
       const data = await res.json()
 
       if (data.error) {
@@ -271,7 +294,6 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      {/* Header */}
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         <button
           onClick={mode === 'choose' ? onClose : goBack}
@@ -286,12 +308,9 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Choose Mode */}
         {mode === 'choose' && (
           <div className="flex flex-col gap-4 p-6">
-            <p className="text-center text-sm text-muted-foreground">
-              How would you like to add food?
-            </p>
+            <p className="text-center text-sm text-muted-foreground">How would you like to add food?</p>
 
             <button
               onClick={() => setMode('camera-photo')}
@@ -328,14 +347,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
               </div>
             </button>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} />
             <button
               onClick={() => fileInputRef.current?.click()}
               className="rounded-xl border border-dashed border-border py-3 text-center text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
@@ -345,14 +357,11 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
           </div>
         )}
 
-        {/* Photo Camera */}
         {mode === 'camera-photo' && (
           <div className="relative flex h-full flex-col">
             {isLoading ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-                {capturedImage && (
-                  <img src={capturedImage} alt="Captured" className="mb-2 h-48 w-48 rounded-2xl object-cover" />
-                )}
+                {capturedImage && <img src={capturedImage} alt="Captured" className="mb-2 h-48 w-48 rounded-2xl object-cover" />}
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="text-center font-medium text-foreground">Analyzing food...</p>
                 <p className="text-center text-sm text-muted-foreground">AI is identifying ingredients and estimating macros</p>
@@ -360,50 +369,28 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
             ) : (
               <>
                 <div className="relative flex-1 bg-black">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="h-full w-full object-cover"
-                  />
+                  <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
                   <canvas ref={canvasRef} className="hidden" />
-                  {/* Viewfinder overlay */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="h-64 w-64 rounded-2xl border-2 border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]" />
                   </div>
-                  <p className="absolute bottom-24 left-0 right-0 text-center text-sm text-white/80">
-                    Center food in frame
-                  </p>
+                  <p className="absolute bottom-24 left-0 right-0 text-center text-sm text-white/80">Center food in frame</p>
                 </div>
                 <div className="flex items-center justify-center gap-6 bg-black p-6">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex h-12 w-12 items-center justify-center rounded-full border border-white/30 text-white"
-                  >
+                  <button onClick={() => fileInputRef.current?.click()} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/30 text-white">
                     <Camera className="h-5 w-5" />
                   </button>
-                  <button
-                    onClick={capturePhoto}
-                    className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-white/20 transition-transform active:scale-95"
-                  >
+                  <button onClick={capturePhoto} className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-white/20 transition-transform active:scale-95">
                     <div className="h-14 w-14 rounded-full bg-white" />
                   </button>
                   <div className="h-12 w-12" />
                 </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
               </>
             )}
           </div>
         )}
 
-        {/* Barcode Scanner */}
         {mode === 'barcode-scan' && (
           <div className="flex flex-col">
             {isLoading ? (
@@ -415,17 +402,9 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
             ) : (
               <>
                 <div className="relative h-64 bg-black">
-                  <video
-                    ref={barcodeVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="h-full w-full object-cover"
-                  />
-                  {/* Scan frame */}
+                  <video ref={barcodeVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="relative h-28 w-72 overflow-hidden rounded border-2 border-emerald-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
-                      {/* Animated scan line */}
                       <div
                         className="absolute left-0 right-0 h-0.5 bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.8)] transition-none"
                         style={{ top: `${scanLine}%` }}
@@ -433,14 +412,12 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
                     </div>
                   </div>
                   <p className="absolute bottom-4 left-0 right-0 text-center text-xs text-white/70">
-                    Point camera at barcode
+                    {'BarcodeDetector' in window ? '🟢 Auto-scanning…' : 'Point camera at barcode'}
                   </p>
                 </div>
 
                 <div className="p-4">
-                  <p className="mb-3 text-center text-sm text-muted-foreground">
-                    Or enter barcode manually
-                  </p>
+                  <p className="mb-3 text-center text-sm text-muted-foreground">Or enter barcode manually</p>
                   <div className="flex gap-2">
                     <input
                       type="number"
@@ -451,11 +428,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
                       className="flex-1 rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       onKeyDown={e => e.key === 'Enter' && handleManualBarcode()}
                     />
-                    <Button
-                      onClick={handleManualBarcode}
-                      disabled={barcodeInput.length < 8}
-                      className="shrink-0"
-                    >
+                    <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 8} className="shrink-0">
                       Search
                     </Button>
                   </div>
@@ -465,89 +438,49 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
           </div>
         )}
 
-        {/* Photo Scan Result */}
         {mode === 'result-photo' && (
           <div className="space-y-4 p-4">
-            {capturedImage && (
-              <img
-                src={capturedImage}
-                alt="Scanned food"
-                className="h-48 w-full rounded-2xl object-cover"
-              />
-            )}
-
+            {capturedImage && <img src={capturedImage} alt="Scanned food" className="h-48 w-full rounded-2xl object-cover" />}
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
-              <p className="text-sm font-medium text-foreground">
-                AI detected {scannedFoods.length} food{scannedFoods.length !== 1 ? 's' : ''}
-              </p>
+              <p className="text-sm font-medium text-foreground">AI detected {scannedFoods.length} food{scannedFoods.length !== 1 ? 's' : ''}</p>
             </div>
-
             {scannedFoods.length > 1 && (
               <div className="space-y-2">
                 {scannedFoods.map((food, i) => (
                   <button
                     key={i}
                     onClick={() => { setSelectedFood(food); setServingMultiplier(1) }}
-                    className={cn(
-                      'w-full rounded-xl border p-4 text-left transition-colors',
-                      selectedFood === food
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border bg-card hover:bg-secondary'
-                    )}
+                    className={cn('w-full rounded-xl border p-4 text-left transition-colors', selectedFood === food ? 'border-primary bg-primary/10' : 'border-border bg-card hover:bg-secondary')}
                   >
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-foreground">{food.name}</p>
                       <ConfidenceBadge confidence={food.confidence} />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      ~{food.calories} cal | {food.servingSize}g
-                    </p>
+                    <p className="text-sm text-muted-foreground">~{food.calories} cal | {food.servingSize}g</p>
                   </button>
                 ))}
               </div>
             )}
-
             {selectedFood && (
-              <FoodResultCard
-                food={selectedFood}
-                servingMultiplier={servingMultiplier}
-                onMultiplierChange={setServingMultiplier}
-                showConfidence
-                onAdd={() => handleAddFood(selectedFood)}
-                mealLabel={mealLabels[meal]}
-              />
+              <FoodResultCard food={selectedFood} servingMultiplier={servingMultiplier} onMultiplierChange={setServingMultiplier} showConfidence onAdd={() => handleAddFood(selectedFood)} mealLabel={mealLabels[meal]} />
             )}
           </div>
         )}
 
-        {/* Barcode Result */}
         {mode === 'result-barcode' && selectedFood && (
           <div className="space-y-4 p-4">
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-emerald-500" />
               <p className="text-sm font-medium text-foreground">Product found!</p>
             </div>
-
             {selectedFood.imageUrl && (
-              <img
-                src={selectedFood.imageUrl}
-                alt={selectedFood.name}
-                className="mx-auto h-40 w-40 rounded-2xl object-contain"
-              />
+              <img src={selectedFood.imageUrl} alt={selectedFood.name} className="mx-auto h-40 w-40 rounded-2xl object-contain" />
             )}
-
-            <FoodResultCard
-              food={selectedFood}
-              servingMultiplier={servingMultiplier}
-              onMultiplierChange={setServingMultiplier}
-              onAdd={() => handleAddFood(selectedFood)}
-              mealLabel={mealLabels[meal]}
-            />
+            <FoodResultCard food={selectedFood} servingMultiplier={servingMultiplier} onMultiplierChange={setServingMultiplier} onAdd={() => handleAddFood(selectedFood)} mealLabel={mealLabels[meal]} />
           </div>
         )}
 
-        {/* Error */}
         {mode === 'error' && (
           <div className="flex flex-col items-center gap-4 p-8 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/15">
@@ -568,35 +501,14 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
 
 function ConfidenceBadge({ confidence }: { confidence?: string }) {
   if (!confidence) return null
-  const colors = {
-    high: 'bg-emerald-500/15 text-emerald-600',
-    medium: 'bg-amber-500/15 text-amber-600',
-    low: 'bg-rose-500/15 text-rose-600',
-  }
-  return (
-    <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', colors[confidence as keyof typeof colors] || colors.medium)}>
-      {confidence} confidence
-    </span>
-  )
+  const colors = { high: 'bg-emerald-500/15 text-emerald-600', medium: 'bg-amber-500/15 text-amber-600', low: 'bg-rose-500/15 text-rose-600' }
+  return <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', colors[confidence as keyof typeof colors] || colors.medium)}>{confidence} confidence</span>
 }
 
-function FoodResultCard({
-  food,
-  servingMultiplier,
-  onMultiplierChange,
-  showConfidence,
-  onAdd,
-  mealLabel,
-}: {
-  food: ScannedFood
-  servingMultiplier: number
-  onMultiplierChange: (v: number) => void
-  showConfidence?: boolean
-  onAdd: () => void
-  mealLabel: string
+function FoodResultCard({ food, servingMultiplier, onMultiplierChange, showConfidence, onAdd, mealLabel }: {
+  food: ScannedFood; servingMultiplier: number; onMultiplierChange: (v: number) => void; showConfidence?: boolean; onAdd: () => void; mealLabel: string
 }) {
   const servings = [0.5, 1, 1.5, 2, 3]
-
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-border bg-card p-4">
@@ -604,35 +516,20 @@ function FoodResultCard({
           <div>
             <p className="font-semibold text-foreground">{food.name}</p>
             {food.brand && <p className="text-xs text-muted-foreground">{food.brand}</p>}
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Per {food.servingLabel || `${food.servingSize}g`}
-            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Per {food.servingLabel || `${food.servingSize}g`}</p>
           </div>
           {showConfidence && <ConfidenceBadge confidence={food.confidence} />}
         </div>
-
-        {/* Serving selector */}
         <div className="mt-4">
           <p className="mb-2 text-xs font-medium text-muted-foreground">Servings</p>
           <div className="flex gap-2">
             {servings.map(s => (
-              <button
-                key={s}
-                onClick={() => onMultiplierChange(s)}
-                className={cn(
-                  'flex-1 rounded-lg py-2 text-xs font-semibold transition-colors',
-                  servingMultiplier === s
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
-                )}
-              >
+              <button key={s} onClick={() => onMultiplierChange(s)} className={cn('flex-1 rounded-lg py-2 text-xs font-semibold transition-colors', servingMultiplier === s ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:bg-secondary/80')}>
                 {s}x
               </button>
             ))}
           </div>
         </div>
-
-        {/* Macros */}
         <div className="mt-4 grid grid-cols-4 gap-2">
           <MacroChip label="Cal" value={Math.round(food.calories * servingMultiplier)} color="blue" />
           <MacroChip label="Protein" value={`${(food.protein * servingMultiplier).toFixed(1)}g`} color="green" />
@@ -640,21 +537,13 @@ function FoodResultCard({
           <MacroChip label="Fats" value={`${(food.fats * servingMultiplier).toFixed(1)}g`} color="rose" />
         </div>
       </div>
-
-      <Button onClick={onAdd} className="w-full" size="lg">
-        Add to {mealLabel}
-      </Button>
+      <Button onClick={onAdd} className="w-full" size="lg">Add to {mealLabel}</Button>
     </div>
   )
 }
 
 function MacroChip({ label, value, color }: { label: string; value: string | number; color: string }) {
-  const colors: Record<string, string> = {
-    blue: 'text-blue-500',
-    green: 'text-green-500',
-    amber: 'text-amber-500',
-    rose: 'text-rose-500',
-  }
+  const colors: Record<string, string> = { blue: 'text-blue-500', green: 'text-green-500', amber: 'text-amber-500', rose: 'text-rose-500' }
   return (
     <div className="flex flex-col items-center rounded-xl bg-secondary/60 py-2">
       <span className={cn('text-sm font-bold', colors[color])}>{value}</span>
