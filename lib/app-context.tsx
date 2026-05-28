@@ -1,20 +1,46 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { UserSettings, DailyNutrition, MealEntry, DEFAULT_SETTINGS, WorkoutDay, DailyQuest, DAILY_QUESTS, BodyChartPRs, Friend, VIRTUAL_FRIENDS } from './types'
+// lib/app-context.tsx
+// Replaces all localStorage with Supabase.
+// Keeps the exact same AppState interface so every component works unchanged.
+
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
+import { supabase } from './supabase'
+import type { User } from '@supabase/supabase-js'
+import {
+  UserSettings,
+  DailyNutrition,
+  MealEntry,
+  DEFAULT_SETTINGS,
+  WorkoutDay,
+  DailyQuest,
+  DAILY_QUESTS,
+  BodyChartPRs,
+  Friend,
+} from './types'
 import { DEFAULT_WORKOUT_SPLIT } from './exercise-data'
 import { calculateMacroTargets } from './nutrition-calc'
 import { calculatePerformanceScore } from './performance-rank'
 
-// --- Safety Helper ---
-const safeJsonParse = (val: string | null, fallback: any) => {
-  if (!val || val === "undefined" || val === "null" || val.trim() === "") return fallback;
-  try {
-    return JSON.parse(val);
-  } catch (e) {
-    return fallback;
-  }
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const getTodayString = () => new Date().toISOString().split('T')[0]
+
+const getEmptyNutrition = (): DailyNutrition => ({
+  date: getTodayString(),
+  meals: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+})
+
+const getEmptyPRs = (): BodyChartPRs => ({
+  chest: {}, back: {}, shoulders: {}, arms: {}, legs: {}, core: {},
+})
+
+function getDailyQuest(dateString: string): DailyQuest {
+  const seed = dateString.split('-').reduce((acc, val) => acc + parseInt(val), 0)
+  return DAILY_QUESTS[seed % DAILY_QUESTS.length]
 }
+
+// ── State types ───────────────────────────────────────────────────────────────
 
 interface QuestState {
   quest: DailyQuest
@@ -26,6 +52,12 @@ interface QuestState {
 type AddFriendResult = 'success' | 'already_added' | 'not_found' | 'self'
 
 interface AppState {
+  // Auth
+  user: User | null
+  isAuthLoading: boolean
+  signOut: () => Promise<void>
+
+  // App data
   settings: UserSettings
   isLoaded: boolean
   riseScore: number
@@ -39,6 +71,8 @@ interface AppState {
   coins: number
   ownedItems: string[]
   equippedItems: Record<string, string>
+
+  // Actions (same API as before)
   addCoins: (amount: number) => void
   buyItem: (itemId: string, cost: number) => void
   equipItem: (itemId: string, type: string) => void
@@ -71,270 +105,547 @@ interface AppState {
   completeQuest: () => void
   updateBodyPR: (group: keyof BodyChartPRs, exerciseId: string, value: number) => void
   resetAllPRs: () => void
-  addFriend: (code: string) => AddFriendResult
+  addFriend: (code: string) => Promise<AddFriendResult>
   removeFriend: (id: string) => void
 }
 
 const AppContext = createContext<AppState | undefined>(undefined)
-const getTodayString = () => new Date().toISOString().split('T')[0]
-const getEmptyNutrition = (): DailyNutrition => ({
-  date: getTodayString(),
-  meals: { breakfast: [], lunch: [], dinner: [], snacks: [] },
-})
-const getEmptyPRs = (): BodyChartPRs => ({
-  chest: {}, back: {}, shoulders: {}, arms: {}, legs: {}, core: {},
-})
 
-function getDailyQuest(dateString: string): DailyQuest {
-  const seed = dateString.split('-').reduce((acc, val) => acc + parseInt(val), 0)
-  const index = seed % DAILY_QUESTS.length
-  return DAILY_QUESTS[index]
-}
-
-function generateFriendCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)]
-  return code
-}
+// ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  // Auth
+  const [user, setUser] = useState<User | null>(null)
+  const [isAuthLoading, setIsAuthLoading] = useState(true)
+
+  // App data
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
-  const [riseScore, setRiseScore] = useState(5250)
-  const [streak, setStreak] = useState(7)
+  const [riseScore, setRiseScore] = useState(0)
+  const [streak, setStreak] = useState(0)
   const [nutrition, setNutrition] = useState<DailyNutrition>(getEmptyNutrition())
   const [workoutSplit, setWorkoutSplit] = useState<WorkoutDay[]>(DEFAULT_WORKOUT_SPLIT)
   const [questState, setQuestState] = useState<QuestState | null>(null)
   const [bodyPRs, setBodyPRs] = useState<BodyChartPRs>(getEmptyPRs())
   const [friends, setFriends] = useState<Friend[]>([])
   const [friendCode, setFriendCode] = useState<string>('')
-  const [isLoaded, setIsLoaded] = useState(false)
   const [coins, setCoins] = useState(0)
   const [ownedItems, setOwnedItems] = useState<string[]>([])
   const [equippedItems, setEquippedItems] = useState<Record<string, string>>({})
+  const [isLoaded, setIsLoaded] = useState(false)
+
+  // ── Watch auth state ──────────────────────────────────────────────────────
 
   useEffect(() => {
-    const storedSettings = localStorage.getItem('rise-settings')
-    const raw = safeJsonParse(storedSettings, DEFAULT_SETTINGS) as UserSettings
-    setSettings({
-      ...DEFAULT_SETTINGS,
-      ...raw,
-      gender: raw.gender ?? 'male',
-      fitnessGoal: raw.fitnessGoal ?? 'build_muscle',
-      onboardingComplete: raw.onboardingComplete ?? storedSettings !== null,
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setIsAuthLoading(false)
     })
-    setRiseScore(safeJsonParse(localStorage.getItem('rise-score'), 5250))
-    setStreak(safeJsonParse(localStorage.getItem('rise-streak'), 7))
-    setWorkoutSplit(safeJsonParse(localStorage.getItem('rise-workout'), DEFAULT_WORKOUT_SPLIT))
-    setBodyPRs(safeJsonParse(localStorage.getItem('rise-body-prs'), getEmptyPRs()))
-    setFriends(safeJsonParse(localStorage.getItem('rise-friends'), []))
-    setCoins(safeJsonParse(localStorage.getItem('rise-coins'), 0))
-    setOwnedItems(safeJsonParse(localStorage.getItem('rise-owned-items'), []))
-    setEquippedItems(safeJsonParse(localStorage.getItem('rise-equipped-items'), {}))
 
-    // 2. Specialized Nutrition Loading
-    const savedNutrition = localStorage.getItem('rise-nutrition')
-    if (savedNutrition) {
-      const parsed = safeJsonParse(savedNutrition, null)
-      if (parsed && parsed.date === getTodayString()) {
-        setNutrition(parsed)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // ── Load all data once user is known ─────────────────────────────────────
+
+  const loadUserData = useCallback(async (uid: string) => {
+    setIsLoaded(false)
+    const today = getTodayString()
+
+    // Update streak on the server and get fresh value
+    const { data: streakData } = await supabase.rpc('update_streak', { p_user_id: uid })
+
+    // 1. Profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', uid)
+      .single()
+
+    if (profile) {
+      setSettings({
+        name: profile.name,
+        age: profile.age,
+        weight: profile.weight,
+        height: profile.height,
+        gender: profile.gender,
+        fitnessGoal: profile.fitness_goal,
+        profilePicture: profile.profile_picture,
+        calorieGoal: profile.calorie_goal,
+        proteinGoal: profile.protein_goal,
+        carbGoal: profile.carb_goal,
+        fatGoal: profile.fat_goal,
+        notifications: profile.notifications,
+        onboardingComplete: profile.onboarding_complete,
+      })
+      setRiseScore(profile.rise_score)
+      setStreak(streakData ?? profile.streak)
+      setCoins(profile.coins)
+      setOwnedItems(profile.owned_items)
+      setEquippedItems(profile.equipped_items)
+      setFriendCode(profile.friend_code)
+    }
+
+    // 2. Nutrition (today only)
+    const { data: nutritionRow } = await supabase
+      .from('nutrition_logs')
+      .select('meals')
+      .eq('user_id', uid)
+      .eq('date', today)
+      .single()
+
+    setNutrition({
+      date: today,
+      meals: nutritionRow?.meals ?? { breakfast: [], lunch: [], dinner: [], snacks: [] },
+    })
+
+    // 3. Workout split
+    const { data: splitRow } = await supabase
+      .from('workout_splits')
+      .select('split')
+      .eq('user_id', uid)
+      .single()
+
+    setWorkoutSplit(splitRow?.split ?? DEFAULT_WORKOUT_SPLIT)
+
+    // 4. Body PRs — flatten rows into BodyChartPRs shape
+    const { data: prRows } = await supabase
+      .from('body_prs')
+      .select('muscle_group, exercise_id, value')
+      .eq('user_id', uid)
+
+    const prs = getEmptyPRs()
+    prRows?.forEach(row => {
+      const group = row.muscle_group as keyof BodyChartPRs
+      if (prs[group] !== undefined) {
+        prs[group][row.exercise_id] = row.value
       }
-    }
+    })
+    setBodyPRs(prs)
 
-    // 3. Specialized Quest Loading
-    const savedQuest = safeJsonParse(localStorage.getItem('rise-quest'), null)
-    if (savedQuest && savedQuest.assignedDate === getTodayString()) {
-      setQuestState(savedQuest)
+    // 5. Quest state (today)
+    const { data: questRow } = await supabase
+      .from('quest_states')
+      .select('*')
+      .eq('user_id', uid)
+      .eq('assigned_date', today)
+      .single()
+
+    if (questRow) {
+      setQuestState({
+        quest: questRow.quest as DailyQuest,
+        progress: questRow.progress,
+        completed: questRow.completed,
+        assignedDate: questRow.assigned_date,
+      })
     } else {
-      setQuestState({ quest: getDailyQuest(getTodayString()), progress: 0, completed: false, assignedDate: getTodayString() })
+      // Create today's quest
+      const todaysQuest = getDailyQuest(today)
+      const newQuestState: QuestState = {
+        quest: todaysQuest,
+        progress: 0,
+        completed: false,
+        assignedDate: today,
+      }
+      await supabase.from('quest_states').upsert({
+        user_id: uid,
+        quest: todaysQuest,
+        progress: 0,
+        completed: false,
+        assigned_date: today,
+      })
+      setQuestState(newQuestState)
     }
 
-    // 4. Friend Code
-    let savedCode = localStorage.getItem('rise-friend-code')
-    if (!savedCode) {
-      savedCode = generateFriendCode()
-      localStorage.setItem('rise-friend-code', savedCode)
-    }
-    setFriendCode(savedCode)
+    // 6. Friends — join with profiles for display data
+    const { data: friendRows } = await supabase
+      .from('friendships')
+      .select(`
+        id,
+        status,
+        created_at,
+        friend:profiles!friendships_friend_id_fkey (
+          id, name, profile_picture, friend_code, rise_score, streak
+        )
+      `)
+      .eq('user_id', uid)
+
+    setFriends(
+      (friendRows ?? []).map(row => ({
+        id: row.id,
+        name: (row.friend as any)?.name ?? 'Unknown',
+        profilePicture: (row.friend as any)?.profile_picture ?? '',
+        friendCode: (row.friend as any)?.friend_code ?? '',
+        riseScore: (row.friend as any)?.rise_score ?? 0,
+        streak: (row.friend as any)?.streak ?? 0,
+        status: row.status as 'pending' | 'accepted',
+        addedAt: row.created_at,
+      }))
+    )
 
     setIsLoaded(true)
   }, [])
 
-  // Sync back to local storage
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-settings', JSON.stringify(settings)) }, [settings, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-score', JSON.stringify(riseScore)) }, [riseScore, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-streak', JSON.stringify(streak)) }, [streak, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-nutrition', JSON.stringify(nutrition)) }, [nutrition, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-workout', JSON.stringify(workoutSplit)) }, [workoutSplit, isLoaded])
-  useEffect(() => { if (isLoaded && questState) localStorage.setItem('rise-quest', JSON.stringify(questState)) }, [questState, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-body-prs', JSON.stringify(bodyPRs)) }, [bodyPRs, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-friends', JSON.stringify(friends)) }, [friends, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-coins', JSON.stringify(coins)) }, [coins, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-owned-items', JSON.stringify(ownedItems)) }, [ownedItems, isLoaded])
-  useEffect(() => { if (isLoaded) localStorage.setItem('rise-equipped-items', JSON.stringify(equippedItems)) }, [equippedItems, isLoaded])
+  useEffect(() => {
+    if (user) {
+      loadUserData(user.id)
+    } else if (!isAuthLoading) {
+      // Not logged in — reset to defaults
+      setIsLoaded(true)
+    }
+  }, [user, isAuthLoading, loadUserData])
 
-  const recalculateGoals = () => {
-    setSettings(prev => {
-      const macros = calculateMacroTargets(
-        prev.weight,
-        prev.height,
-        prev.age,
-        prev.gender,
-        prev.fitnessGoal,
-        bodyPRs
-      )
-      return { ...prev, ...macros }
-    })
-  }
+  // ── Persist helpers ───────────────────────────────────────────────────────
 
-  const updateSettings = (newSettings: Partial<UserSettings>) => {
+  const saveProfile = useCallback(async (patch: Partial<{
+    name: string; age: number; weight: number; height: number;
+    gender: string; fitness_goal: string; profile_picture: string;
+    calorie_goal: number; protein_goal: number; carb_goal: number; fat_goal: number;
+    notifications: object; onboarding_complete: boolean;
+    rise_score: number; coins: number; owned_items: string[];
+    equipped_items: object;
+  }>) => {
+    if (!user) return
+    await supabase.from('profiles').update(patch).eq('id', user.id)
+  }, [user])
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  const updateSettings = useCallback((newSettings: Partial<UserSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...newSettings }
-      const profileChanged =
-        newSettings.weight !== undefined ||
-        newSettings.height !== undefined ||
-        newSettings.age !== undefined ||
-        newSettings.gender !== undefined ||
-        newSettings.fitnessGoal !== undefined
+      const profileChanged = ['weight','height','age','gender','fitnessGoal'].some(
+        k => newSettings[k as keyof UserSettings] !== undefined
+      )
       if (profileChanged && next.onboardingComplete) {
-        const macros = calculateMacroTargets(
-          next.weight,
-          next.height,
-          next.age,
-          next.gender,
-          next.fitnessGoal,
-          bodyPRs
-        )
-        return { ...next, ...macros }
+        const macros = calculateMacroTargets(next.weight, next.height, next.age, next.gender, next.fitnessGoal, bodyPRs)
+        Object.assign(next, macros)
       }
+      saveProfile({
+        name: next.name,
+        age: next.age,
+        weight: next.weight,
+        height: next.height,
+        gender: next.gender,
+        fitness_goal: next.fitnessGoal,
+        profile_picture: next.profilePicture,
+        calorie_goal: next.calorieGoal,
+        protein_goal: next.proteinGoal,
+        carb_goal: next.carbGoal,
+        fat_goal: next.fatGoal,
+        notifications: next.notifications,
+        onboarding_complete: next.onboardingComplete,
+      })
       return next
     })
-  }
+  }, [bodyPRs, saveProfile])
 
-  const getPerformanceScore = () =>
-    calculatePerformanceScore(bodyPRs, {
-      age: settings.age,
-      weightKg: settings.weight,
-      gender: settings.gender,
+  const recalculateGoals = useCallback(() => {
+    setSettings(prev => {
+      const macros = calculateMacroTargets(prev.weight, prev.height, prev.age, prev.gender, prev.fitnessGoal, bodyPRs)
+      const next = { ...prev, ...macros }
+      saveProfile({ calorie_goal: next.calorieGoal, protein_goal: next.proteinGoal, carb_goal: next.carbGoal, fat_goal: next.fatGoal })
+      return next
     })
+  }, [bodyPRs, saveProfile])
 
-  const completeOnboarding = (
-    profile: {
-      name: string
-      age: number
-      weight: number
-      height: number
-      gender: UserSettings['gender']
-      fitnessGoal: UserSettings['fitnessGoal']
-    },
-    initialPRs?: {
-      chest?: Record<string, number>
-      arms?: Record<string, number>
-      legs?: Record<string, number>
-    }
+  const getPerformanceScore = useCallback(() =>
+    calculatePerformanceScore(bodyPRs, { age: settings.age, weightKg: settings.weight, gender: settings.gender }),
+  [bodyPRs, settings])
+
+  const completeOnboarding = useCallback(async (
+    profile: { name: string; age: number; weight: number; height: number; gender: UserSettings['gender']; fitnessGoal: UserSettings['fitnessGoal'] },
+    initialPRs?: { chest?: Record<string, number>; arms?: Record<string, number>; legs?: Record<string, number> }
   ) => {
     const mergedPRs: BodyChartPRs = {
       ...getEmptyPRs(),
-      chest: { ...getEmptyPRs().chest, ...initialPRs?.chest },
-      arms: { ...getEmptyPRs().arms, ...initialPRs?.arms },
-      legs: { ...getEmptyPRs().legs, ...initialPRs?.legs },
+      chest: { ...initialPRs?.chest },
+      arms: { ...initialPRs?.arms },
+      legs: { ...initialPRs?.legs },
     }
     setBodyPRs(mergedPRs)
-    const macros = calculateMacroTargets(
-      profile.weight,
-      profile.height,
-      profile.age,
-      profile.gender,
-      profile.fitnessGoal,
-      mergedPRs
+
+    const macros = calculateMacroTargets(profile.weight, profile.height, profile.age, profile.gender, profile.fitnessGoal, mergedPRs)
+    const nextSettings = { ...profile, ...macros, onboardingComplete: true, profilePicture: '', notifications: DEFAULT_SETTINGS.notifications }
+    setSettings(nextSettings)
+
+    if (!user) return
+
+    // Save profile
+    await saveProfile({
+      name: profile.name,
+      age: profile.age,
+      weight: profile.weight,
+      height: profile.height,
+      gender: profile.gender,
+      fitness_goal: profile.fitnessGoal,
+      calorie_goal: macros.calorieGoal,
+      protein_goal: macros.proteinGoal,
+      carb_goal: macros.carbGoal,
+      fat_goal: macros.fatGoal,
+      onboarding_complete: true,
+    })
+
+    // Save initial PRs
+    const prInserts: any[] = []
+    ;(['chest', 'arms', 'legs'] as const).forEach(group => {
+      const groupPRs = mergedPRs[group]
+      Object.entries(groupPRs).forEach(([exerciseId, value]) => {
+        if (value > 0) prInserts.push({ user_id: user.id, muscle_group: group, exercise_id: exerciseId, value })
+      })
+    })
+    if (prInserts.length > 0) {
+      await supabase.from('body_prs').upsert(prInserts, { onConflict: 'user_id,muscle_group,exercise_id' })
+    }
+  }, [user, saveProfile])
+
+  const addRiseScore = useCallback((points: number) => {
+    setRiseScore(prev => {
+      const next = prev + points
+      saveProfile({ rise_score: next })
+      return next
+    })
+  }, [saveProfile])
+
+  const addCoins = useCallback((amount: number) => {
+    setCoins(prev => {
+      const next = prev + amount
+      saveProfile({ coins: next })
+      return next
+    })
+  }, [saveProfile])
+
+  const buyItem = useCallback((itemId: string, cost: number) => {
+    setCoins(prev => {
+      if (prev < cost) return prev
+      const nextCoins = prev - cost
+      setOwnedItems(prevItems => {
+        if (prevItems.includes(itemId)) return prevItems
+        const nextItems = [...prevItems, itemId]
+        saveProfile({ coins: nextCoins, owned_items: nextItems })
+        return nextItems
+      })
+      return nextCoins
+    })
+  }, [saveProfile])
+
+  const equipItem = useCallback((itemId: string, type: string) => {
+    setEquippedItems(prev => {
+      const next = { ...prev, [type]: itemId }
+      saveProfile({ equipped_items: next })
+      return next
+    })
+  }, [saveProfile])
+
+  // ── Nutrition ─────────────────────────────────────────────────────────────
+
+  const persistNutrition = useCallback(async (updated: DailyNutrition) => {
+    if (!user) return
+    await supabase.from('nutrition_logs').upsert(
+      { user_id: user.id, date: updated.date, meals: updated.meals },
+      { onConflict: 'user_id,date' }
     )
-    setSettings(prev => ({ ...prev, ...profile, ...macros, onboardingComplete: true }))
-  }
-  const addRiseScore = (points: number) => setRiseScore(prev => prev + points)
-  const addCoins = (amount: number) => setCoins(prev => prev + amount)
-  const buyItem = (itemId: string, cost: number) => {
-    if (coins < cost) return
-    setCoins(prev => prev - cost)
-    setOwnedItems(prev => prev.includes(itemId) ? prev : [...prev, itemId])
-  }
-  const equipItem = (itemId: string, type: string) => setEquippedItems(prev => ({ ...prev, [type]: itemId }))
-  const addMealEntry = (meal: 'breakfast' | 'lunch' | 'dinner' | 'snacks', entry: MealEntry) => {
-    setNutrition(prev => ({ ...prev, meals: { ...prev.meals, [meal]: [...prev.meals[meal], entry] } }))
-  }
-  const removeMealEntry = (meal: 'breakfast' | 'lunch' | 'dinner' | 'snacks', entryId: string) => {
-    setNutrition(prev => ({ ...prev, meals: { ...prev.meals, [meal]: prev.meals[meal].filter(e => e.id !== entryId) } }))
-  }
-  const getTodayTotals = () => {
-    const allMeals = [...nutrition.meals.breakfast, ...nutrition.meals.lunch, ...nutrition.meals.dinner, ...nutrition.meals.snacks]
+  }, [user])
+
+  const addMealEntry = useCallback((meal: 'breakfast' | 'lunch' | 'dinner' | 'snacks', entry: MealEntry) => {
+    setNutrition(prev => {
+      const next = { ...prev, meals: { ...prev.meals, [meal]: [...prev.meals[meal], entry] } }
+      persistNutrition(next)
+      return next
+    })
+  }, [persistNutrition])
+
+  const removeMealEntry = useCallback((meal: 'breakfast' | 'lunch' | 'dinner' | 'snacks', entryId: string) => {
+    setNutrition(prev => {
+      const next = { ...prev, meals: { ...prev.meals, [meal]: prev.meals[meal].filter(e => e.id !== entryId) } }
+      persistNutrition(next)
+      return next
+    })
+  }, [persistNutrition])
+
+  const getTodayTotals = useCallback(() => {
+    const all = [...nutrition.meals.breakfast, ...nutrition.meals.lunch, ...nutrition.meals.dinner, ...nutrition.meals.snacks]
     return {
-      calories: allMeals.reduce((sum, e) => sum + e.calories, 0),
-      protein: allMeals.reduce((sum, e) => sum + e.protein, 0),
-      carbs: allMeals.reduce((sum, e) => sum + e.carbs, 0),
-      fats: allMeals.reduce((sum, e) => sum + e.fats, 0),
+      calories: all.reduce((s, e) => s + e.calories, 0),
+      protein:  all.reduce((s, e) => s + e.protein, 0),
+      carbs:    all.reduce((s, e) => s + e.carbs, 0),
+      fats:     all.reduce((s, e) => s + e.fats, 0),
     }
-  }
-  const addExerciseToDay = (dayIndex: number, exercise: any) => {
+  }, [nutrition])
+
+  // ── Workout split ─────────────────────────────────────────────────────────
+
+  const persistSplit = useCallback(async (split: WorkoutDay[]) => {
+    if (!user) return
+    await supabase.from('workout_splits').upsert(
+      { user_id: user.id, split },
+      { onConflict: 'user_id' }
+    )
+  }, [user])
+
+  const addExerciseToDay = useCallback((dayIndex: number, exercise: any) => {
     setWorkoutSplit(prev => {
-      const updated = [...prev]; updated[dayIndex] = { ...updated[dayIndex], exercises: [...updated[dayIndex].exercises, exercise] }
-      return updated
+      const next = [...prev]
+      next[dayIndex] = { ...next[dayIndex], exercises: [...next[dayIndex].exercises, exercise] }
+      persistSplit(next)
+      return next
     })
-  }
-  const removeExerciseFromDay = (dayIndex: number, exerciseId: string) => {
+  }, [persistSplit])
+
+  const removeExerciseFromDay = useCallback((dayIndex: number, exerciseId: string) => {
     setWorkoutSplit(prev => {
-      const updated = [...prev]; updated[dayIndex] = { ...updated[dayIndex], exercises: updated[dayIndex].exercises.filter(e => e.id !== exerciseId) }
-      return updated
+      const next = [...prev]
+      next[dayIndex] = { ...next[dayIndex], exercises: next[dayIndex].exercises.filter(e => e.id !== exerciseId) }
+      persistSplit(next)
+      return next
     })
-  }
-  const updateExercise = (dayIndex: number, exerciseId: string, updates: any) => {
+  }, [persistSplit])
+
+  const updateExercise = useCallback((dayIndex: number, exerciseId: string, updates: any) => {
     setWorkoutSplit(prev => {
-      const updated = [...prev]; updated[dayIndex] = { ...updated[dayIndex], exercises: updated[dayIndex].exercises.map(e => e.id === exerciseId ? { ...e, ...updates } : e) }
-      return updated
+      const next = [...prev]
+      next[dayIndex] = { ...next[dayIndex], exercises: next[dayIndex].exercises.map(e => e.id === exerciseId ? { ...e, ...updates } : e) }
+      persistSplit(next)
+      return next
     })
-  }
-  const updateQuestProgress = (progress: number) => {
-    if (questState && !questState.completed) setQuestState(prev => prev ? { ...prev, progress: Math.min(progress, prev.quest.target) } : null)
-  }
-  const completeQuest = () => {
-    if (questState && !questState.completed) {
-      setQuestState(prev => prev ? { ...prev, completed: true, progress: prev.quest.target } : null)
-      addRiseScore(questState.quest.xpReward); addCoins(50)
-    }
-  }
-  const updateBodyPR = (group: keyof BodyChartPRs, exerciseId: string, value: number) => {
+  }, [persistSplit])
+
+  // ── Body PRs ──────────────────────────────────────────────────────────────
+
+  const updateBodyPR = useCallback((group: keyof BodyChartPRs, exerciseId: string, value: number) => {
     setBodyPRs(prev => {
       const next = { ...prev, [group]: { ...prev[group], [exerciseId]: value } }
+      if (user) {
+        supabase.from('body_prs').upsert(
+          { user_id: user.id, muscle_group: group, exercise_id: exerciseId, value },
+          { onConflict: 'user_id,muscle_group,exercise_id' }
+        )
+      }
       setSettings(s => {
         if (!s.onboardingComplete) return s
-        const macros = calculateMacroTargets(
-          s.weight,
-          s.height,
-          s.age,
-          s.gender,
-          s.fitnessGoal,
-          next
-        )
+        const macros = calculateMacroTargets(s.weight, s.height, s.age, s.gender, s.fitnessGoal, next)
         return { ...s, ...macros }
       })
       return next
     })
-  }
-  const resetAllPRs = () => setBodyPRs(getEmptyPRs())
-  const addFriend = (code: string): AddFriendResult => {
+  }, [user])
+
+  const resetAllPRs = useCallback(() => {
+    setBodyPRs(getEmptyPRs())
+    if (user) {
+      supabase.from('body_prs').delete().eq('user_id', user.id)
+    }
+  }, [user])
+
+  // ── Quests ────────────────────────────────────────────────────────────────
+
+  const updateQuestProgress = useCallback((progress: number) => {
+    setQuestState(prev => {
+      if (!prev || prev.completed) return prev
+      const next = { ...prev, progress: Math.min(progress, prev.quest.target) }
+      if (user) {
+        supabase.from('quest_states').update({ progress: next.progress })
+          .eq('user_id', user.id).eq('assigned_date', next.assignedDate)
+      }
+      return next
+    })
+  }, [user])
+
+  const completeQuest = useCallback(() => {
+    setQuestState(prev => {
+      if (!prev || prev.completed) return prev
+      const next = { ...prev, completed: true, progress: prev.quest.target }
+      if (user) {
+        supabase.from('quest_states').update({ completed: true, progress: next.progress })
+          .eq('user_id', user.id).eq('assigned_date', next.assignedDate)
+        // Award XP + coins
+        addRiseScore(prev.quest.xpReward)
+        addCoins(50)
+      }
+      return next
+    })
+  }, [user, addRiseScore, addCoins])
+
+  // ── Friends ───────────────────────────────────────────────────────────────
+
+  const addFriend = useCallback(async (code: string): Promise<AddFriendResult> => {
     const upper = code.toUpperCase().trim()
     if (upper === friendCode) return 'self'
     if (friends.some(f => f.friendCode === upper)) return 'already_added'
-    const virtualFriend = VIRTUAL_FRIENDS[upper]
-    if (!virtualFriend) return 'not_found'
-    setFriends(prev => [...prev, { ...virtualFriend, id: Date.now().toString(), status: 'accepted', addedAt: new Date().toISOString() }])
+    if (!user) return 'not_found'
+
+    // Look up the profile with this friend code
+    const { data: targetProfile } = await supabase
+      .from('profiles')
+      .select('id, name, profile_picture, friend_code, rise_score, streak')
+      .eq('friend_code', upper)
+      .single()
+
+    if (!targetProfile) return 'not_found'
+
+    await supabase.from('friendships').insert({
+      user_id: user.id,
+      friend_id: targetProfile.id,
+      status: 'accepted',
+    })
+
+    setFriends(prev => [...prev, {
+      id: targetProfile.id,
+      name: targetProfile.name,
+      profilePicture: targetProfile.profile_picture,
+      friendCode: targetProfile.friend_code,
+      riseScore: targetProfile.rise_score,
+      streak: targetProfile.streak,
+      status: 'accepted',
+      addedAt: new Date().toISOString(),
+    }])
+
     return 'success'
-  }
-  const removeFriend = (id: string) => setFriends(prev => prev.filter(f => f.id !== id))
+  }, [user, friendCode, friends])
+
+  const removeFriend = useCallback((id: string) => {
+    setFriends(prev => prev.filter(f => f.id !== id))
+    if (user) {
+      supabase.from('friendships').delete().eq('user_id', user.id).eq('id', id)
+    }
+  }, [user])
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut()
+    // Reset state
+    setSettings(DEFAULT_SETTINGS)
+    setRiseScore(0)
+    setStreak(0)
+    setNutrition(getEmptyNutrition())
+    setWorkoutSplit(DEFAULT_WORKOUT_SPLIT)
+    setQuestState(null)
+    setBodyPRs(getEmptyPRs())
+    setFriends([])
+    setFriendCode('')
+    setCoins(0)
+    setOwnedItems([])
+    setEquippedItems({})
+    setIsLoaded(false)
+  }, [])
+
+  // ── Context value ──────────────────────────────────────────────────────────
 
   return (
     <AppContext.Provider value={{
-      settings, isLoaded, riseScore, streak, nutrition, workoutSplit, questState, bodyPRs, friends, friendCode, coins, ownedItems, equippedItems,
-      addCoins, buyItem, equipItem, updateSettings, getPerformanceScore, completeOnboarding, recalculateGoals, addRiseScore, addMealEntry, removeMealEntry, getTodayTotals, addExerciseToDay,
-      removeExerciseFromDay, updateExercise, updateQuestProgress, completeQuest, updateBodyPR, resetAllPRs, addFriend, removeFriend,
+      user, isAuthLoading, signOut,
+      settings, isLoaded, riseScore, streak, nutrition, workoutSplit,
+      questState, bodyPRs, friends, friendCode, coins, ownedItems, equippedItems,
+      addCoins, buyItem, equipItem, updateSettings, getPerformanceScore,
+      completeOnboarding, recalculateGoals, addRiseScore,
+      addMealEntry, removeMealEntry, getTodayTotals,
+      addExerciseToDay, removeExerciseFromDay, updateExercise,
+      updateQuestProgress, completeQuest,
+      updateBodyPR, resetAllPRs,
+      addFriend, removeFriend,
     }}>
       {children}
     </AppContext.Provider>

@@ -10,9 +10,10 @@ import { HomePage } from '@/components/home-page'
 import { NutritionPage } from '@/components/nutrition-page'
 import { TrainPage } from '@/components/train-page'
 import { MorePage } from '@/components/more-page'
+import { AuthScreen } from '@/components/auth-screen'
 
 function AppContent() {
-  const { settings, isLoaded } = useApp()
+  const { settings, isLoaded, user, isAuthLoading } = useApp()
   const [activeTab, setActiveTab] = useState('home')
   const [foodView, setFoodView] = useState<'diary' | 'plan'>('diary')
 
@@ -21,8 +22,12 @@ function AppContent() {
     setActiveTab('food')
   }
 
-  if (!isLoaded) {
+  if (isAuthLoading || !isLoaded) {
     return <AppSplash />
+  }
+
+  if (!user) {
+    return <AuthScreen />
   }
 
   if (!settings.onboardingComplete) {
