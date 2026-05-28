@@ -5,7 +5,8 @@ import { useApp } from '@/lib/app-context'
 import { FOOD_DATABASE, FOOD_CATEGORIES, searchFoods, getFoodCount } from '@/lib/food-data'
 import { FoodItem, MealEntry } from '@/lib/types'
 import { WeeklyMealPlan } from '@/components/weekly-meal-plan'
-import { Plus, Search, X, ArrowLeft, Minus, BookOpen, CalendarDays } from 'lucide-react'
+import { Plus, Search, X, ArrowLeft, Minus, BookOpen, CalendarDays, Camera, Barcode } from 'lucide-react'
+import { FoodScanner } from '@/components/food-scanner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +26,10 @@ export function NutritionPage({ initialView = 'diary' }: NutritionPageProps) {
     open: false,
     meal: null,
   })
+  const [scannerModal, setScannerModal] = useState<{ open: boolean; meal: MealType | null }>({
+    open: false,
+    meal: null,
+  })
   const foodCount = getFoodCount()
 
   const caloriePercent = Math.min(100, (totals.calories / settings.calorieGoal) * 100)
@@ -38,6 +43,14 @@ export function NutritionPage({ initialView = 'diary' }: NutritionPageProps) {
 
   const closeAddFood = () => {
     setAddFoodModal({ open: false, meal: null })
+  }
+
+  const openScanner = (meal: MealType) => {
+    setScannerModal({ open: true, meal })
+  }
+
+  const closeScanner = () => {
+    setScannerModal({ open: false, meal: null })
   }
 
   const handleAddFood = (entry: MealEntry) => {
@@ -170,15 +183,26 @@ export function NutritionPage({ initialView = 'diary' }: NutritionPageProps) {
                     )}
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-9 gap-1.5 text-primary"
-                  onClick={() => openAddFood(mealType)}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Food
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-9 w-9 p-0 text-emerald-500"
+                    onClick={() => openScanner(mealType)}
+                    title="Scan food"
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-9 gap-1.5 text-primary"
+                    onClick={() => openAddFood(mealType)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </Button>
+                </div>
               </div>
 
               {entries.length > 0 && (
@@ -217,6 +241,17 @@ export function NutritionPage({ initialView = 'diary' }: NutritionPageProps) {
           meal={addFoodModal.meal}
           onClose={closeAddFood}
           onAdd={handleAddFood}
+        />
+      )}
+
+      {/* Food Scanner Modal */}
+      {scannerModal.open && scannerModal.meal && (
+        <FoodScanner
+          meal={scannerModal.meal}
+          onClose={closeScanner}
+          onAdd={(entry) => {
+            if (scannerModal.meal) addMealEntry(scannerModal.meal, entry)
+          }}
         />
       )}
     </>
