@@ -20,13 +20,13 @@ import {
   Check,
   Plus,
   Dumbbell,
-  Sparkles,
   Camera,
   X,
   ShieldCheck,
   AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RankBadge } from '@/components/rank-badge'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +34,116 @@ const PUSHUP_GOAL = 100
 
 function getTodayKey() {
   return new Date().toISOString().split('T')[0]
+}
+
+// ─── Streak Calendar ──────────────────────────────────────────────────────────
+
+function StreakCalendar() {
+  const WEEKS = 12
+  const DAYS = 7
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const dates: Date[] = []
+  for (let i = WEEKS * DAYS - 1; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - i)
+    dates.push(d)
+  }
+
+  const getActivity = (date: Date): 'workout' | 'nutrition' | 'both' | 'none' => {
+    const key = date.toISOString().split('T')[0]
+    let workout = false
+    let nutrition = false
+    try {
+      const wLog = localStorage.getItem(`rise-workout-${key}`)
+      if (wLog) workout = true
+
+      const pushup = localStorage.getItem('rise-pushup-challenge')
+      if (pushup) {
+        const p = JSON.parse(pushup)
+        if (p.date === key && p.completed) workout = true
+      }
+
+      const nLog = localStorage.getItem(`rise-nutrition-${key}`)
+      if (nLog) {
+        const n = JSON.parse(nLog)
+        const total = (n.breakfast?.length ?? 0) + (n.lunch?.length ?? 0) + (n.dinner?.length ?? 0) + (n.snacks?.length ?? 0)
+        if (total > 0) nutrition = true
+      }
+    } catch {}
+
+    if (workout && nutrition) return 'both'
+    if (workout) return 'workout'
+    if (nutrition) return 'nutrition'
+    return 'none'
+  }
+
+  const weeks: Date[][] = []
+  for (let w = 0; w < WEEKS; w++) {
+    weeks.push(dates.slice(w * DAYS, w * DAYS + DAYS))
+  }
+
+  const cellBg = (activity: ReturnType<typeof getActivity>) => {
+    switch (activity) {
+      case 'both': return 'bg-primary'
+      case 'workout': return 'bg-orange-500'
+      case 'nutrition': return 'bg-green-500'
+      default: return 'bg-secondary'
+    }
+  }
+
+  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+  const activeDays = dates.filter(d => getActivity(d) !== 'none').length
+  const todayKey = today.toISOString().split('T')[0]
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="font-semibold text-foreground">Activity streak</h3>
+          <p className="text-xs text-muted-foreground">{activeDays} active days · last 12 weeks</p>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-primary" />Both</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-orange-500" />Workout</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-green-500" />Nutrition</span>
+        </div>
+      </div>
+
+      <div className="flex gap-0.5 mb-0.5">
+        {dayLabels.map((l, i) => (
+          <div key={i} className="flex-1 text-center text-[9px] font-medium text-muted-foreground">{l}</div>
+        ))}
+      </div>
+
+      <div className="flex gap-0.5">
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex flex-1 flex-col gap-0.5">
+            {week.map((date, di) => {
+              const dateKey = date.toISOString().split('T')[0]
+              const isToday = dateKey === todayKey
+              const isFuture = date > today
+              const activity = isFuture ? 'none' : getActivity(date)
+              return (
+                <div
+                  key={di}
+                  title={date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  className={cn(
+                    'aspect-square w-full rounded-sm transition-all',
+                    isFuture ? 'bg-secondary/30' : cellBg(activity),
+                    isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-card',
+                    !isFuture && activity === 'none' && 'opacity-50'
+                  )}
+                />
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ─── Permanent Daily Challenge ────────────────────────────────────────────────
@@ -570,35 +680,25 @@ export function HomePage({ onTabChange, onGoToFood }: HomePageProps) {
 
       <section className="grid grid-cols-2 gap-3">
         <button type="button" onClick={() => (onGoToFood ? onGoToFood('diary') : onTabChange?.('food'))}
-          className="flex flex-col items-center justify-center gap-2 rounded-2xl bg-primary p-5 font-bold text-primary-foreground transition-transform active:scale-[0.98]">
-          <Plus className="h-7 w-7 stroke-[2.5px]" />
-          Log meal
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl bg-primary p-4 transition-transform active:scale-[0.98]">
+          <Plus className="h-6 w-6 stroke-[2.5px] text-primary-foreground" />
+          <span className="text-xs font-bold text-primary-foreground">Log meal</span>
         </button>
         <button type="button" onClick={() => onTabChange?.('train')}
-          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-5 font-bold text-foreground transition-transform active:scale-[0.98]">
-          <Dumbbell className="h-7 w-7 text-primary" />
-          Workout
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-4 transition-transform active:scale-[0.98]">
+          <Dumbbell className="h-6 w-6 text-primary" />
+          <span className="text-xs font-bold text-foreground">
+            {todayWorkout?.name ?? 'Rest day'}
+          </span>
         </button>
       </section>
-
-      <button type="button" onClick={() => (onGoToFood ? onGoToFood('plan') : onTabChange?.('food'))}
-        className="flex w-full items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-left transition-colors active:scale-[0.99]">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20">
-          <Sparkles className="h-5 w-5 text-primary" />
-        </div>
-        <div className="flex-1">
-          <p className="font-semibold text-foreground">Weekly meal plan</p>
-          <p className="text-sm text-muted-foreground">Personalized meals for your goals</p>
-        </div>
-        <span className="text-sm font-medium text-primary">View</span>
-      </button>
 
       <div className={cn('relative overflow-hidden rounded-2xl border border-border bg-card p-4', currentRank.glowClass)}>
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Rise rank</p>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-2xl">{currentRank.symbol}</span>
+              <RankBadge symbol={currentRank.symbol} size={36} />
               <span className={cn('text-xl font-bold', currentRank.name === 'Elite' && 'elite-text')}
                 style={{ color: currentRank.name !== 'Elite' ? currentRank.color : undefined }}>
                 {currentRank.name}
@@ -618,7 +718,7 @@ export function HomePage({ onTabChange, onGoToFood }: HomePageProps) {
           <div className="mt-3 rounded-xl bg-secondary/50 p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span>{nextRank.symbol}</span>
+                <RankBadge symbol={nextRank.symbol} size={24} />
                 <span className="font-semibold" style={{ color: nextRank.color }}>{nextRank.name}</span>
               </div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -633,18 +733,8 @@ export function HomePage({ onTabChange, onGoToFood }: HomePageProps) {
         )}
       </div>
 
-      <button type="button" onClick={() => onTabChange?.('workout')}
-        className="w-full rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-card/80">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-foreground">Today&apos;s workout</h3>
-            <p className="text-sm text-muted-foreground">
-              {todayWorkout?.name || 'Rest day'} · {todayWorkout?.exercises.length ?? 0} exercises
-            </p>
-          </div>
-          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Open</span>
-        </div>
-      </button>
+      {/* Activity streak calendar */}
+      <StreakCalendar />
 
       {/* Permanent daily challenge — stays every day */}
       <PushupChallengeCard />
@@ -652,22 +742,6 @@ export function HomePage({ onTabChange, onGoToFood }: HomePageProps) {
       {/* Rotating daily quest — changes each day */}
       <DailyQuestCard />
 
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <h3 className="font-semibold text-foreground">Today&apos;s overview</h3>
-        <div className="mt-3 grid grid-cols-4 gap-2">
-          {[
-            { label: 'Cal', value: totals.calories, className: 'text-foreground' },
-            { label: 'Protein', value: `${Math.round(totals.protein)}g`, className: 'text-green-500' },
-            { label: 'Carbs', value: `${Math.round(totals.carbs)}g`, className: 'text-amber-500' },
-            { label: 'Fat', value: `${Math.round(totals.fats)}g`, className: 'text-rose-500' },
-          ].map(stat => (
-            <div key={stat.label} className="rounded-lg bg-secondary/50 p-3 text-center">
-              <p className={cn('text-lg font-bold', stat.className)}>{stat.value}</p>
-              <p className="text-[10px] text-muted-foreground">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
     </motion.div>
   )
 }

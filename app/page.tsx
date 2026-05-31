@@ -11,6 +11,7 @@ import { NutritionPage } from '@/components/nutrition-page'
 import { TrainPage } from '@/components/train-page'
 import { MorePage } from '@/components/more-page'
 import { AuthScreen } from '@/components/auth-screen'
+import { AppTutorial } from '@/components/app-tutorial'
 
 function AppContent() {
   const { settings, isLoaded, user, isAuthLoading } = useApp()
@@ -56,6 +57,7 @@ function AppContent() {
       </main>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <AppTutorial onTabChange={setActiveTab} />
     </div>
   )
 }

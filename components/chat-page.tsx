@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Sparkles, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { streamAIResponse } from '@/lib/fitness-ai'
+import { streamAIResponse, UserContext } from '@/lib/fitness-ai'
+import { useApp } from '@/lib/app-context'
 
 interface ChatMessage {
   id: string
@@ -13,18 +14,43 @@ interface ChatMessage {
 }
 
 const SUGGESTED_QUESTIONS = [
-  "How can I help you today?",
-  "What are you working on?",
-  "Got any questions for me?",
-  "Need help with anything?",
+  "How are my macros looking today?",
+  "What should I eat to hit my protein goal?",
+  "Tips for today's workout?",
+  "How do I break through a plateau?",
 ]
 
 export function ChatPage() {
+  const { settings, streak, getTodayTotals, workoutSplit, getPerformanceScore } = useApp()
+  const totals = getTodayTotals()
+  const caloriesRemaining = Math.max(settings.calorieGoal - totals.calories, 0)
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' })
+  const todayWorkout = workoutSplit.find((d: any) => d.day === today)
+
+  const userContext: UserContext = {
+    name: settings.name.split(' ')[0],
+    caloriesRemaining,
+    calorieGoal: settings.calorieGoal,
+    protein: Math.round(totals.protein),
+    proteinGoal: settings.proteinGoal,
+    carbs: Math.round(totals.carbs),
+    carbGoal: settings.carbGoal,
+    fats: Math.round(totals.fats),
+    fatGoal: settings.fatGoal,
+    todayWorkout: todayWorkout?.name ?? 'Rest day',
+    streak,
+    rank: 'Gold', // pulled from performance score
+    fitnessGoal: settings.fitnessGoal ?? 'build muscle',
+    weight: settings.weight,
+    height: settings.height,
+    age: settings.age,
+  }
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       role: 'assistant',
-      content: `Hey! 👋 I'm your AI assistant. Ask me anything!`,
+      content: `Hey ${userContext.name}! 💪 I'm your Rise Coach. You have ${caloriesRemaining} calories left today and your streak is at ${streak} days. What can I help you with?`,
       timestamp: new Date(),
     },
   ])
@@ -70,6 +96,7 @@ export function ChatPage() {
       await streamAIResponse(
         {
           history: [...history, { role: 'user', content: text.trim() }],
+          userContext,
         },
         (chunk) => {
           setMessages(prev =>
@@ -141,10 +168,10 @@ export function ChatPage() {
           <Bot className="h-5 w-5 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="font-bold text-foreground">AI Assistant</h1>
+          <h1 className="font-bold text-foreground">Rise Coach</h1>
           <p className="flex items-center gap-1 text-xs text-green-500">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
-            Online
+            Knows your stats
           </p>
         </div>
       </div>
@@ -167,12 +194,10 @@ export function ChatPage() {
               msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
             )}
           >
-            <div
-              className={cn(
-                'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                msg.role === 'assistant' ? 'bg-primary' : 'bg-secondary'
-              )}
-            >
+            <div className={cn(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+              msg.role === 'assistant' ? 'bg-primary' : 'bg-secondary'
+            )}>
               {msg.role === 'assistant' ? (
                 <Bot className="h-4 w-4 text-primary-foreground" />
               ) : (
@@ -180,14 +205,12 @@ export function ChatPage() {
               )}
             </div>
 
-            <div
-              className={cn(
-                'max-w-[82%] rounded-2xl px-4 py-3 text-sm',
-                msg.role === 'assistant'
-                  ? 'rounded-tl-sm bg-card border border-border text-foreground'
-                  : 'rounded-tr-sm bg-primary text-primary-foreground'
-              )}
-            >
+            <div className={cn(
+              'max-w-[82%] rounded-2xl px-4 py-3 text-sm',
+              msg.role === 'assistant'
+                ? 'rounded-tl-sm bg-card border border-border text-foreground'
+                : 'rounded-tr-sm bg-primary text-primary-foreground'
+            )}>
               <div className="space-y-1">{renderContent(msg.content)}</div>
               {msg.content && (
                 <p className={cn('mt-1.5 text-[10px]', msg.role === 'assistant' ? 'text-muted-foreground' : 'text-primary-foreground/70')}>
@@ -229,7 +252,7 @@ export function ChatPage() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask me anything..."
+            placeholder="Ask your coach anything..."
             rows={1}
             className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             style={{ maxHeight: 120 }}
@@ -248,7 +271,7 @@ export function ChatPage() {
           </button>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-          Powered by Claude
+          Powered by Gemini · Knows your stats
         </p>
       </div>
     </div>

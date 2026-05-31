@@ -63,15 +63,15 @@ export interface RankInfo {
 
 /** minScore = 0–100 performance score from logged PRs (see performance-rank.ts) */
 export const RANKS: RankInfo[] = [
-  { name: 'Iron', symbol: '🩶', color: '#9ca3af', minScore: 0, glowClass: 'rank-glow-iron' },
-  { name: 'Bronze', symbol: '🟤', color: '#cd7f32', minScore: 12, glowClass: 'rank-glow-bronze' },
-  { name: 'Silver', symbol: '⚪', color: '#c0c0c0', minScore: 25, glowClass: 'rank-glow-silver' },
-  { name: 'Gold', symbol: '🟡', color: '#fbbf24', minScore: 38, glowClass: 'rank-glow-gold' },
-  { name: 'Platinum', symbol: '💠', color: '#67e8f9', minScore: 50, glowClass: 'rank-glow-platinum' },
-  { name: 'Diamond', symbol: '💎', color: '#38bdf8', minScore: 62, glowClass: 'rank-glow-diamond' },
-  { name: 'Master', symbol: '🔴', color: '#f87171', minScore: 72, glowClass: 'rank-glow-master' },
-  { name: 'Grandmaster', symbol: '🟣', color: '#c084fc', minScore: 82, glowClass: 'rank-glow-grandmaster' },
-  { name: 'Elite', symbol: '⚡', color: '#fbbf24', minScore: 90, glowClass: 'rank-glow-elite' },
+  { name: 'Iron', symbol: 'iron', color: '#9ca3af', minScore: 0, glowClass: 'rank-glow-iron' },
+  { name: 'Bronze', symbol: 'bronze', color: '#cd7f32', minScore: 12, glowClass: 'rank-glow-bronze' },
+  { name: 'Silver', symbol: 'silver', color: '#c0c0c0', minScore: 25, glowClass: 'rank-glow-silver' },
+  { name: 'Gold', symbol: 'gold', color: '#fbbf24', minScore: 38, glowClass: 'rank-glow-gold' },
+  { name: 'Platinum', symbol: 'platinum', color: '#67e8f9', minScore: 50, glowClass: 'rank-glow-platinum' },
+  { name: 'Diamond', symbol: 'diamond', color: '#38bdf8', minScore: 62, glowClass: 'rank-glow-diamond' },
+  { name: 'Master', symbol: 'master', color: '#f87171', minScore: 72, glowClass: 'rank-glow-master' },
+  { name: 'Grandmaster', symbol: 'grandmaster', color: '#c084fc', minScore: 82, glowClass: 'rank-glow-grandmaster' },
+  { name: 'Elite', symbol: 'elite', color: '#fbbf24', minScore: 90, glowClass: 'rank-glow-elite' },
 ]
 
 export function getRankByScore(score: number): RankInfo {
