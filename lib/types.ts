@@ -1,5 +1,7 @@
 export type Gender = 'male' | 'female'
 export type FitnessGoal = 'lose_fat' | 'maintain' | 'build_muscle'
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced'
 
 export interface UserSettings {
   name: string
@@ -8,6 +10,8 @@ export interface UserSettings {
   height: number
   gender: Gender
   fitnessGoal: FitnessGoal
+  activityLevel: ActivityLevel
+  experienceLevel: ExperienceLevel
   onboardingComplete: boolean
   profilePicture: string
   calorieGoal: number
@@ -113,6 +117,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   height: 175,
   gender: 'male',
   fitnessGoal: 'build_muscle',
+  activityLevel: 'moderate',
+  experienceLevel: 'beginner',
   onboardingComplete: false,
   profilePicture: '',
   calorieGoal: 2000,

@@ -1,424 +1,441 @@
 'use client'
 
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
-import { ChevronRight, User, Scale, Ruler, Target, Moon, Sun, Dumbbell, ChevronLeft } from 'lucide-react'
+import {
+  ChevronRight, ChevronLeft, User, Scale, Ruler, Moon, Sun,
+  Dumbbell, Flame, Target, Zap, Activity,
+} from 'lucide-react'
 import { useApp } from '@/lib/app-context'
-import { FitnessGoal, Gender } from '@/lib/types'
-import { ONBOARDING_PR_GROUPS } from '@/lib/performance-rank'
+import { FitnessGoal, Gender, ActivityLevel, ExperienceLevel } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-const GOALS: { id: FitnessGoal; label: string; desc: string }[] = [
-  { id: 'lose_fat', label: 'Lose fat', desc: 'Calorie deficit + high protein' },
-  { id: 'maintain', label: 'Maintain', desc: 'Stay lean and strong' },
-  { id: 'build_muscle', label: 'Build muscle', desc: 'Surplus + progressive overload' },
+// ─── Step data ────────────────────────────────────────────────────────────────
+
+const GOALS: { id: FitnessGoal; icon: typeof Flame; label: string; desc: string; color: string }[] = [
+  { id: 'lose_fat',     icon: Flame,    label: 'Lose fat',      desc: 'Calorie deficit · high protein · cardio mix',    color: 'text-orange-500' },
+  { id: 'maintain',    icon: Target,   label: 'Stay lean',     desc: 'Maintain weight · build strength · feel great',   color: 'text-blue-500' },
+  { id: 'build_muscle',icon: Dumbbell, label: 'Build muscle',  desc: 'Calorie surplus · progressive overload · PRs',    color: 'text-primary' },
 ]
 
-const TOTAL_STEPS = 6
+const ACTIVITY_LEVELS: { id: ActivityLevel; label: string; desc: string; days: string }[] = [
+  { id: 'sedentary',   label: 'Sedentary',    desc: 'Desk job, mostly sitting',          days: 'Little or no exercise' },
+  { id: 'light',       label: 'Lightly active', desc: 'Walking, casual movement',       days: '1–2 days / week' },
+  { id: 'moderate',    label: 'Moderately active', desc: 'Regular gym sessions',        days: '3–4 days / week' },
+  { id: 'active',      label: 'Very active',  desc: 'Hard training most days',           days: '5–6 days / week' },
+  { id: 'very_active', label: 'Athlete',      desc: 'Physical job or twice-daily training', days: 'Daily + heavy' },
+]
+
+const EXPERIENCE_LEVELS: { id: ExperienceLevel; label: string; desc: string; years: string }[] = [
+  { id: 'beginner',     label: 'Beginner',     desc: 'New to lifting or returning after a long break', years: '< 1 year' },
+  { id: 'intermediate', label: 'Intermediate', desc: 'Consistent training, know the basics',           years: '1–3 years' },
+  { id: 'advanced',     label: 'Advanced',     desc: 'Experienced lifter, track PRs regularly',        years: '3+ years' },
+]
+
+const TOTAL_STEPS = 7
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function OnboardingFlow() {
   const { completeOnboarding } = useApp()
   const { setTheme } = useTheme()
+
   const [step, setStep] = useState(0)
+  const [dir, setDir] = useState(1)
+
+  // Fields
   const [themeChoice, setThemeChoice] = useState<'dark' | 'light'>('dark')
   const [name, setName] = useState('')
   const [gender, setGender] = useState<Gender>('male')
   const [age, setAge] = useState('')
   const [weight, setWeight] = useState('')
   const [height, setHeight] = useState('')
-  const [goal, setGoal] = useState<FitnessGoal>('build_muscle')
-  const [benchWeight, setBenchWeight] = useState('')
-  const [benchReps, setBenchReps] = useState('')
-  const [curlWeight, setCurlWeight] = useState('')
-  const [curlReps, setCurlReps] = useState('')
-  const [squatWeight, setSquatWeight] = useState('')
-  const [squatReps, setSquatReps] = useState('')
-  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>('metric')
   const [heightFeet, setHeightFeet] = useState('')
   const [heightInches, setHeightInches] = useState('')
+  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>('metric')
+  const [goal, setGoal] = useState<FitnessGoal>('build_muscle')
+  const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate')
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>('beginner')
 
-  // Calculate estimated 1RM using Epley formula: 1RM = weight × (1 + reps/30)
-  const calculate1RM = (weight: string, reps: string): number => {
-    const w = parseFloat(weight)
-    const r = parseInt(reps)
-    if (!w || w <= 0 || !r || r <= 0) return 0
-    if (r === 1) return Math.round(w)
-    return Math.round(w * (1 + r / 30))
+  const getHeightCm = (): number => {
+    if (unitSystem === 'metric') return parseFloat(height) || 0
+    return ((parseInt(heightFeet) || 0) * 12 + (parseInt(heightInches) || 0)) * 2.54
   }
 
-  const bench1RM = calculate1RM(benchWeight, benchReps)
-  const curl1RM = calculate1RM(curlWeight, curlReps)
-  const squat1RM = calculate1RM(squatWeight, squatReps)
+  const getWeightKg = (): number => {
+    const v = parseFloat(weight) || 0
+    return unitSystem === 'metric' ? v : v / 2.205
+  }
 
-  const getHeightValue = (): number => {
-    if (unitSystem === 'metric') {
-      return parseFloat(height) || 0
+  const canNext = (() => {
+    switch (step) {
+      case 0: return true
+      case 1: return name.trim().length >= 1
+      case 2: return !!gender
+      case 3: return true // units — always ok
+      case 4: {
+        const ageOk = parseInt(age) >= 13 && parseInt(age) <= 80
+        const wtOk = getWeightKg() > 20
+        const htOk = getHeightCm() > 100
+        return ageOk && wtOk && htOk
+      }
+      case 5: return true // goal — always has a default
+      case 6: return true // activity + experience — always has defaults
+      default: return true
     }
-    const feet = parseInt(heightFeet) || 0
-    const inches = parseInt(heightInches) || 0
-    return (feet * 12 + inches) * 2.54 // Convert to cm
-  }
+  })()
 
-  const canNext =
-    step === 0
-      ? true
-      : step === 1
-        ? name.trim().length >= 1
-        : step === 2
-          ? gender
-          : step === 3
-            ? true
-            : step === 4
-              ? parseInt(age) >= 13 &&
-                parseInt(age) <= 80 &&
-                parseFloat(weight) > 20 &&
-                (unitSystem === 'metric' 
-                  ? parseFloat(height) > 100 
-                  : (parseInt(heightFeet) >= 3 && parseInt(heightFeet) <= 8))
-              : step === 5
-                ? bench1RM > 0 && curl1RM > 0 && squat1RM > 0
-                : true
+  const go = (direction: 1 | -1) => {
+    if (direction === 1 && !canNext) return
+    setDir(direction)
+    if (direction === 1 && step === TOTAL_STEPS - 1) {
+      finish()
+    } else {
+      setStep(s => s + direction)
+    }
+  }
 
   const applyTheme = (t: 'dark' | 'light') => {
     setThemeChoice(t)
     setTheme(t)
   }
 
-  const convertToMetric = (val: number, type: 'weight' | 'height'): number => {
-    if (unitSystem === 'metric') return val
-    if (type === 'weight') return val / 2.205 // lbs to kg
-    if (type === 'height') return val * 2.54 // inches to cm
-    return val
-  }
-
   const finish = () => {
-    const weightKg = convertToMetric(parseFloat(weight), 'weight')
-    const heightCm = getHeightValue()
-    
     completeOnboarding(
       {
         name: name.trim(),
         age: parseInt(age),
-        weight: weightKg,
-        height: heightCm,
+        weight: getWeightKg(),
+        height: getHeightCm(),
         gender,
         fitnessGoal: goal,
+        activityLevel,
+        experienceLevel,
       },
-      {
-        chest: { [ONBOARDING_PR_GROUPS.chest.id]: bench1RM },
-        arms: { [ONBOARDING_PR_GROUPS.arms.id]: curl1RM },
-        legs: { [ONBOARDING_PR_GROUPS.legs.id]: squat1RM },
-      }
+      {} // no PRs required at start
     )
   }
+
+  const stepTitles = [
+    null,
+    'What should we call you?',
+    'Quick about you',
+    'Your units',
+    'Body stats',
+    'What\'s your main goal?',
+    'Your lifestyle',
+  ]
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-4 pb-8 pt-10">
       <div className="mx-auto w-full max-w-md">
+
+        {/* Header */}
         <div className="mb-8">
           {step === 0 ? (
             <>
               <h1 className="text-4xl font-bold text-foreground">Welcome to Rise</h1>
               <p className="mt-3 text-base text-muted-foreground">
-                Get ranked on your real lifts. Track your nutrition, custom workouts, and rise up the ranks.
+                Your plan, your rank, your pace. Let's set everything up so Rise actually fits you.
               </p>
             </>
           ) : (
             <>
-              <p className="text-xs font-bold uppercase tracking-wider text-primary">Setup</p>
-              <h1 className="mt-1 text-2xl font-bold text-foreground">Let&apos;s get started</h1>
+              <p className="text-xs font-bold uppercase tracking-wider text-primary">Setup · {step}/{TOTAL_STEPS - 1}</p>
+              <h1 className="mt-1 text-2xl font-bold text-foreground">{stepTitles[step]}</h1>
             </>
           )}
-          <div className="mt-6 flex gap-1">
+          {/* Progress bar */}
+          <div className="mt-5 flex gap-1">
             {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
               <div
                 key={i}
-                className={cn('h-1 flex-1 rounded-full', i <= step ? 'bg-primary' : 'bg-secondary')}
+                className={cn('h-1 flex-1 rounded-full transition-colors', i <= step ? 'bg-primary' : 'bg-secondary')}
               />
             ))}
           </div>
         </div>
 
-        <motion.div key={step} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
-          {step === 0 && (
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <div className="rounded-3xl bg-gradient-to-br from-primary/20 to-primary/5 px-6 py-8 text-center">
+        {/* Step content */}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: dir > 0 ? 20 : -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: dir > 0 ? -20 : 20 }}
+            transition={{ duration: 0.18 }}
+          >
+
+            {/* Step 0 — Theme */}
+            {step === 0 && (
+              <div className="space-y-6">
+                <div className="rounded-3xl border border-border bg-card px-6 py-8 text-center">
                   <Dumbbell className="mx-auto h-12 w-12 text-primary" />
                   <h2 className="mt-4 text-xl font-bold text-foreground">Rise to the top</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Your rank is calculated from real lifts, not random metrics.
+                    Personalized workouts, AI meal plans, and a rank system built on your actual lifts.
                   </p>
                 </div>
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">Pick your theme to start</p>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => applyTheme('dark')}
-                  className={cn(
-                    'flex flex-col items-center gap-2 rounded-2xl border py-6 transition-colors',
-                    themeChoice === 'dark'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-card text-foreground'
-                  )}
-                >
-                  <Moon className="h-8 w-8" />
-                  <span className="font-semibold">Dark</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyTheme('light')}
-                  className={cn(
-                    'flex flex-col items-center gap-2 rounded-2xl border py-6 transition-colors',
-                    themeChoice === 'light'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-card text-foreground'
-                  )}
-                >
-                  <Sun className="h-8 w-8" />
-                  <span className="font-semibold">Light</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <User className="h-4 w-4" />
-                <span className="text-sm font-medium">What should we call you?</span>
-              </div>
-              <input
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="Your name"
-                className="w-full rounded-2xl border border-border bg-card px-4 py-3.5 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-primary"
-                autoFocus
-              />
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-muted-foreground">Gender (for strength standards)</p>
-              <div className="grid grid-cols-2 gap-3">
-                {(['male', 'female'] as Gender[]).map(g => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setGender(g)}
-                    className={cn(
-                      'rounded-2xl border py-4 text-center font-semibold capitalize transition-colors',
-                      gender === g
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-card text-foreground'
-                    )}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-muted-foreground">Units</p>
-                <div className="flex gap-2 rounded-full bg-secondary p-1">
-                  <button
-                    type="button"
-                    onClick={() => setUnitSystem('metric')}
-                    className={cn(
-                      'px-3 py-1 rounded-full text-xs font-semibold transition-colors',
-                      unitSystem === 'metric'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    kg/cm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUnitSystem('imperial')}
-                    className={cn(
-                      'px-3 py-1 rounded-full text-xs font-semibold transition-colors',
-                      unitSystem === 'imperial'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    lbs/in
-                  </button>
+                <p className="text-sm font-medium text-muted-foreground">Pick your theme</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(['dark', 'light'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => applyTheme(t)}
+                      className={cn(
+                        'flex flex-col items-center gap-2 rounded-2xl border py-6 transition-colors',
+                        themeChoice === t ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground'
+                      )}
+                    >
+                      {t === 'dark' ? <Moon className="h-8 w-8" /> : <Sun className="h-8 w-8" />}
+                      <span className="font-semibold capitalize">{t}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {step === 4 && (
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <User className="h-4 w-4" /> Age
-                </label>
+            {/* Step 1 — Name */}
+            {step === 1 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <User className="h-4 w-4" />
+                  <span className="text-sm">This is how Rise will address you</span>
+                </div>
                 <input
-                  type="number"
-                  value={age}
-                  onChange={e => setAge(e.target.value)}
-                  placeholder="e.g. 16"
-                  className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && go(1)}
+                  placeholder="Your name"
+                  className="w-full rounded-2xl border border-border bg-card px-4 py-3.5 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
                 />
               </div>
-              <div>
-                <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Scale className="h-4 w-4" /> Weight ({unitSystem === 'metric' ? 'kg' : 'lbs'})
-                </label>
-                <input
-                  type="number"
-                  value={weight}
-                  onChange={e => setWeight(e.target.value)}
-                  placeholder={unitSystem === 'metric' ? 'e.g. 75' : 'e.g. 165'}
-                  className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+            )}
+
+            {/* Step 2 — Gender */}
+            {step === 2 && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Used to calculate accurate strength standards and calorie targets</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(['male', 'female'] as Gender[]).map(g => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setGender(g)}
+                      className={cn(
+                        'rounded-2xl border py-5 text-center font-semibold capitalize transition-colors',
+                        gender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground'
+                      )}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Ruler className="h-4 w-4" /> Height
-                </label>
-                {unitSystem === 'metric' ? (
+            )}
+
+            {/* Step 3 — Units */}
+            {step === 3 && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground">Choose your preferred measurement system</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {([['metric', 'kg / cm'], ['imperial', 'lbs / ft']] as const).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setUnitSystem(val)}
+                      className={cn(
+                        'rounded-2xl border py-5 text-center font-semibold transition-colors',
+                        unitSystem === val ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 4 — Body stats */}
+            {step === 4 && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">Used to calculate your TDEE and personalised calorie target</p>
+
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <User className="h-4 w-4" /> Age
+                  </label>
                   <input
                     type="number"
-                    value={height}
-                    onChange={e => setHeight(e.target.value)}
-                    placeholder="e.g. 180 cm"
+                    value={age}
+                    onChange={e => setAge(e.target.value)}
+                    placeholder="e.g. 22"
                     className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                ) : (
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <input
-                        type="number"
-                        value={heightFeet}
-                        onChange={e => setHeightFeet(e.target.value)}
-                        placeholder="ft"
-                        className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <span className="mt-1 block text-xs text-muted-foreground">feet</span>
-                    </div>
-                    <div className="flex-1">
-                      <input
-                        type="number"
-                        value={heightInches}
-                        onChange={e => setHeightInches(e.target.value)}
-                        placeholder="in"
-                        className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <span className="mt-1 block text-xs text-muted-foreground">inches</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="mb-2 text-sm font-medium text-muted-foreground">Primary goal</p>
-                {GOALS.map(g => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    onClick={() => setGoal(g.id)}
-                    className={cn(
-                      'mb-2 w-full rounded-2xl border p-3 text-left transition-colors',
-                      goal === g.id ? 'border-primary bg-primary/10' : 'border-border bg-card'
-                    )}
-                  >
-                    <p className="font-semibold text-foreground">{g.label}</p>
-                    <p className="text-xs text-muted-foreground">{g.desc}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
 
-          {step === 5 && (
-            <div className="space-y-5">
-              <div className="flex items-center gap-2">
-                <Dumbbell className="h-4 w-4 text-primary" />
-                <p className="text-sm font-medium text-foreground">Log your best lifts</p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Enter the weight and reps for your best set. We&apos;ll calculate your estimated 1RM for ranking.
-              </p>
-              {[
-                { 
-                  key: 'bench', 
-                  label: ONBOARDING_PR_GROUPS.chest.name, 
-                  weight: benchWeight, 
-                  setWeight: setBenchWeight,
-                  reps: benchReps,
-                  setReps: setBenchReps,
-                  estimated1RM: bench1RM
-                },
-                { 
-                  key: 'curl', 
-                  label: ONBOARDING_PR_GROUPS.arms.name, 
-                  weight: curlWeight, 
-                  setWeight: setCurlWeight,
-                  reps: curlReps,
-                  setReps: setCurlReps,
-                  estimated1RM: curl1RM
-                },
-                { 
-                  key: 'squat', 
-                  label: ONBOARDING_PR_GROUPS.legs.name, 
-                  weight: squatWeight, 
-                  setWeight: setSquatWeight,
-                  reps: squatReps,
-                  setReps: setSquatReps,
-                  estimated1RM: squat1RM
-                },
-              ].map(item => (
-                <div key={item.key} className="rounded-2xl border border-border bg-card p-4">
-                  <label className="mb-3 block text-sm font-semibold text-foreground">{item.label}</label>
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <input
-                        type="number"
-                        value={item.weight}
-                        onChange={e => item.setWeight(e.target.value)}
-                        placeholder="Weight"
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-center focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <span className="mt-1 block text-center text-xs text-muted-foreground">lbs</span>
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <Scale className="h-4 w-4" /> Weight ({unitSystem === 'metric' ? 'kg' : 'lbs'})
+                  </label>
+                  <input
+                    type="number"
+                    value={weight}
+                    onChange={e => setWeight(e.target.value)}
+                    placeholder={unitSystem === 'metric' ? 'e.g. 75' : 'e.g. 165'}
+                    className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <Ruler className="h-4 w-4" /> Height
+                  </label>
+                  {unitSystem === 'metric' ? (
+                    <input
+                      type="number"
+                      value={height}
+                      onChange={e => setHeight(e.target.value)}
+                      placeholder="e.g. 178 cm"
+                      className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  ) : (
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={heightFeet}
+                          onChange={e => setHeightFeet(e.target.value)}
+                          placeholder="ft"
+                          className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <span className="mt-1 block text-center text-xs text-muted-foreground">feet</span>
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={heightInches}
+                          onChange={e => setHeightInches(e.target.value)}
+                          placeholder="in"
+                          className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <span className="mt-1 block text-center text-xs text-muted-foreground">inches</span>
+                      </div>
                     </div>
-                    <div className="flex items-center text-muted-foreground">×</div>
-                    <div className="flex-1">
-                      <input
-                        type="number"
-                        value={item.reps}
-                        onChange={e => item.setReps(e.target.value)}
-                        placeholder="Reps"
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-center focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <span className="mt-1 block text-center text-xs text-muted-foreground">reps</span>
-                    </div>
-                  </div>
-                  {item.estimated1RM > 0 && (
-                    <p className="mt-3 text-center text-xs text-primary">
-                      Est. 1RM: <span className="font-bold">{item.estimated1RM} lbs</span>
-                    </p>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
+              </div>
+            )}
 
+            {/* Step 5 — Goal */}
+            {step === 5 && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  This shapes your calorie target, macro split, and workout programming
+                </p>
+                {GOALS.map(g => {
+                  const Icon = g.icon
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => setGoal(g.id)}
+                      className={cn(
+                        'flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-colors',
+                        goal === g.id ? 'border-primary bg-primary/10' : 'border-border bg-card'
+                      )}
+                    >
+                      <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary', goal === g.id && 'bg-primary/20')}>
+                        <Icon className={cn('h-5 w-5', g.color)} />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-foreground">{g.label}</p>
+                        <p className="text-xs text-muted-foreground">{g.desc}</p>
+                      </div>
+                      {goal === g.id && (
+                        <div className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                          <div className="h-2 w-2 rounded-full bg-primary-foreground" />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Step 6 — Activity + Experience */}
+            {step === 6 && (
+              <div className="space-y-5">
+                {/* Activity level */}
+                <div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">How active are you day-to-day?</p>
+                  </div>
+                  <div className="space-y-2">
+                    {ACTIVITY_LEVELS.map(a => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setActivityLevel(a.id)}
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors',
+                          activityLevel === a.id ? 'border-primary bg-primary/10' : 'border-border bg-card'
+                        )}
+                      >
+                        <div>
+                          <p className="font-semibold text-foreground">{a.label}</p>
+                          <p className="text-xs text-muted-foreground">{a.desc}</p>
+                        </div>
+                        <span className={cn(
+                          'ml-3 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                          activityLevel === a.id ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'
+                        )}>
+                          {a.days}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Experience level */}
+                <div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Dumbbell className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">Lifting experience</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {EXPERIENCE_LEVELS.map(e => (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => setExperienceLevel(e.id)}
+                        className={cn(
+                          'flex flex-col items-center rounded-2xl border px-2 py-4 text-center transition-colors',
+                          experienceLevel === e.id ? 'border-primary bg-primary/10' : 'border-border bg-card'
+                        )}
+                      >
+                        <p className="font-semibold text-foreground text-sm">{e.label}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground leading-tight">{e.years}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Nav buttons */}
         <div className="mt-8 flex gap-3">
           {step > 0 && (
             <button
               type="button"
-              onClick={() => setStep(s => s - 1)}
+              onClick={() => go(-1)}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-border bg-card py-4 font-semibold text-foreground transition-colors hover:bg-secondary"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -428,23 +445,17 @@ export function OnboardingFlow() {
           <button
             type="button"
             disabled={!canNext}
-            onClick={() => {
-              if (step === 0) applyTheme(themeChoice)
-              if (step < TOTAL_STEPS - 1) setStep(s => s + 1)
-              else finish()
-            }}
+            onClick={() => go(1)}
             className={cn(
               'flex flex-1 items-center justify-center gap-2 rounded-2xl py-4 font-bold transition-opacity',
-              step === 0 ? 'w-full' : '',
-              canNext
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-muted-foreground disabled:opacity-40'
+              canNext ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground opacity-40'
             )}
           >
             {step < TOTAL_STEPS - 1 ? 'Continue' : 'Enter Rise'}
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
+
       </div>
     </div>
   )

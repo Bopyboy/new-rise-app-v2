@@ -1,4 +1,4 @@
-import { BodyChartPRs } from './types'
+import { BodyChartPRs, ActivityLevel, ExperienceLevel } from './types'
 import { getTierFromValue, getThresholds, PR_EXERCISE_GROUPS, StrengthProfile } from './strength-standards'
 
 export type FitnessGoal = 'lose_fat' | 'maintain' | 'build_muscle'
@@ -23,7 +23,16 @@ export function calculateBMR(
   return 10 * weightKg + 6.25 * heightCm - 5 * age - 161
 }
 
-/** 0–1 training experience from logged PRs */
+/** Activity multipliers based on user-selected activity level */
+export const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
+  sedentary: 1.2,    // desk job, no exercise
+  light: 1.375,      // 1-3 days/week
+  moderate: 1.55,    // 3-5 days/week
+  active: 1.725,     // 6-7 days/week hard
+  very_active: 1.9,  // physical job + training
+}
+
+/** Legacy: infer training level from logged PRs (0–1 scale) */
 export function getTrainingLevel(bodyPRs: BodyChartPRs, profile: StrengthProfile): number {
   const tierScores = { untrained: 0, beginner: 0.25, intermediate: 0.5, advanced: 0.75, elite: 1 }
   let total = 0
@@ -45,6 +54,7 @@ export function getTrainingLevel(bodyPRs: BodyChartPRs, profile: StrengthProfile
   return total / count
 }
 
+/** Fallback multiplier derived from PRs when activityLevel not set */
 export function getActivityMultiplier(trainingLevel: number): number {
   if (trainingLevel < 0.3) return 1.35
   if (trainingLevel < 0.55) return 1.5
@@ -58,12 +68,18 @@ export function calculateMacroTargets(
   age: number,
   gender: Gender,
   goal: FitnessGoal,
-  bodyPRs: BodyChartPRs
+  bodyPRs: BodyChartPRs,
+  activityLevel?: ActivityLevel
 ): MacroTargets {
   const profile: StrengthProfile = { age, weightKg, gender }
   const bmr = calculateBMR(weightKg, heightCm, age, gender)
-  const trainingLevel = getTrainingLevel(bodyPRs, profile)
-  const tdee = Math.round(bmr * getActivityMultiplier(trainingLevel))
+
+  // Use explicit activity level if available, else fall back to PR inference
+  const multiplier = activityLevel
+    ? ACTIVITY_MULTIPLIERS[activityLevel]
+    : getActivityMultiplier(getTrainingLevel(bodyPRs, profile))
+
+  const tdee = Math.round(bmr * multiplier)
 
   let calories = tdee
   if (goal === 'lose_fat') calories = Math.round(tdee * 0.82)

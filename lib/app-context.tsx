@@ -320,7 +320,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         k => newSettings[k as keyof UserSettings] !== undefined
       )
       if (profileChanged && next.onboardingComplete) {
-        const macros = calculateMacroTargets(next.weight, next.height, next.age, next.gender, next.fitnessGoal, bodyPRs)
+        const macros = calculateMacroTargets(next.weight, next.height, next.age, next.gender, next.fitnessGoal, bodyPRs, next.activityLevel)
         Object.assign(next, macros)
       }
       saveProfile({
@@ -344,7 +344,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const recalculateGoals = useCallback(() => {
     setSettings(prev => {
-      const macros = calculateMacroTargets(prev.weight, prev.height, prev.age, prev.gender, prev.fitnessGoal, bodyPRs)
+      const macros = calculateMacroTargets(prev.weight, prev.height, prev.age, prev.gender, prev.fitnessGoal, bodyPRs, prev.activityLevel)
       const next = { ...prev, ...macros }
       saveProfile({ calorie_goal: next.calorieGoal, protein_goal: next.proteinGoal, carb_goal: next.carbGoal, fat_goal: next.fatGoal })
       return next
@@ -356,7 +356,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   [bodyPRs, settings])
 
   const completeOnboarding = useCallback(async (
-    profile: { name: string; age: number; weight: number; height: number; gender: UserSettings['gender']; fitnessGoal: UserSettings['fitnessGoal'] },
+    profile: { name: string; age: number; weight: number; height: number; gender: UserSettings['gender']; fitnessGoal: UserSettings['fitnessGoal']; activityLevel?: UserSettings['activityLevel']; experienceLevel?: UserSettings['experienceLevel'] },
     initialPRs?: { chest?: Record<string, number>; arms?: Record<string, number>; legs?: Record<string, number> }
   ) => {
     const mergedPRs: BodyChartPRs = {
@@ -367,8 +367,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     setBodyPRs(mergedPRs)
 
-    const macros = calculateMacroTargets(profile.weight, profile.height, profile.age, profile.gender, profile.fitnessGoal, mergedPRs)
-    const nextSettings = { ...profile, ...macros, onboardingComplete: true, profilePicture: '', notifications: DEFAULT_SETTINGS.notifications }
+    const macros = calculateMacroTargets(profile.weight, profile.height, profile.age, profile.gender, profile.fitnessGoal, mergedPRs, profile.activityLevel)
+    const nextSettings = {
+      ...profile,
+      ...macros,
+      activityLevel: profile.activityLevel ?? 'moderate',
+      experienceLevel: profile.experienceLevel ?? 'beginner',
+      onboardingComplete: true,
+      profilePicture: '',
+      notifications: DEFAULT_SETTINGS.notifications,
+    }
     setSettings(nextSettings)
 
     if (!user) return
@@ -525,7 +533,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setSettings(s => {
         if (!s.onboardingComplete) return s
-        const macros = calculateMacroTargets(s.weight, s.height, s.age, s.gender, s.fitnessGoal, next)
+        const macros = calculateMacroTargets(s.weight, s.height, s.age, s.gender, s.fitnessGoal, next, s.activityLevel)
         return { ...s, ...macros }
       })
       return next
