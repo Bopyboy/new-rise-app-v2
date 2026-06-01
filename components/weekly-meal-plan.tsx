@@ -309,24 +309,48 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
         const parsed: RecipeData = JSON.parse(clean)
         setRecipe(parsed)
       } catch {
-        setRecipe({
-          ingredients: [
-            `Main protein source for ${slot.name}`,
-            'Vegetables or grains as needed',
-            '2 tbsp olive oil',
-            'Salt and pepper to taste',
-            'Fresh herbs for garnish',
-          ],
-          prepTime: '10 min',
-          cookTime: '20 min',
-          steps: [
-            { instruction: 'Gather and prep all ingredients', detail: 'Read through everything first. Wash vegetables, measure out your ingredients, and have everything ready before you start cooking. This makes the whole process much easier.', timerSeconds: 0, timerLabel: '' },
-            { instruction: 'Heat your pan or grill', detail: 'Set your burner to medium-high heat. Add a little oil — when it starts to shimmer, the pan is ready. A hot pan means better browning.', timerSeconds: 120, timerLabel: 'Heat pan' },
-            { instruction: 'Cook the protein', detail: 'Add your protein to the hot pan. Don\'t move it around — let it sit so it gets a nice crust. Flip halfway through.', timerSeconds: 480, timerLabel: 'Cook protein' },
-            { instruction: 'Add remaining ingredients', detail: 'Add your vegetables, grains, or sauce now. Stir everything together and let the flavors combine.', timerSeconds: 180, timerLabel: 'Combine & cook' },
-            { instruction: 'Plate and serve', detail: 'Transfer to a plate. Add any garnishes like fresh herbs. Let it cool for a minute before eating — it\'s hot!', timerSeconds: 0, timerLabel: '' },
-          ],
-        })
+        // Smart fallback — detect no-cook foods and avoid suggesting heat/pan
+        const nameLower = slot.name.toLowerCase()
+        const isNoCook = /shake|smoothie|yogurt|parfait|berry|berries|fruit|banana|oats|overnight|chia|pudding|cereal|granola|bar |protein bar|salad|sandwich|wrap|hummus|cottage cheese|deli|cold brew|juice|bowl/.test(nameLower)
+
+        if (isNoCook) {
+          setRecipe({
+            ingredients: [
+              `1 scoop protein powder (if using)`,
+              `1 cup base liquid (milk, almond milk, or water)`,
+              `1 banana or fruit of choice`,
+              `½ cup yogurt or oats (optional)`,
+              `Ice cubes (optional)`,
+            ],
+            prepTime: '5 min',
+            cookTime: '0 min',
+            steps: [
+              { instruction: 'Gather all ingredients', detail: 'Get everything out and measured before you start. No cooking needed for this one — just assembling.', timerSeconds: 0, timerLabel: '' },
+              { instruction: 'Add ingredients to blender or bowl', detail: 'For a shake or smoothie: add liquid first, then fruit, then protein powder. For a bowl or parfait: layer ingredients in a bowl or glass.', timerSeconds: 0, timerLabel: '' },
+              { instruction: 'Blend or mix', detail: 'For shakes/smoothies: blend on high for 30–60 seconds until smooth. For bowls: stir or layer — no blending needed.', timerSeconds: 45, timerLabel: 'Blend' },
+              { instruction: 'Serve immediately', detail: 'Pour into a glass or bowl. Add any toppings like granola, nuts, or extra fruit. Best enjoyed fresh.', timerSeconds: 0, timerLabel: '' },
+            ],
+          })
+        } else {
+          setRecipe({
+            ingredients: [
+              `Main ingredient for ${slot.name}`,
+              '1 tbsp olive oil',
+              'Salt and pepper to taste',
+              'Garlic powder or seasoning of choice',
+              'Fresh herbs for garnish',
+            ],
+            prepTime: '10 min',
+            cookTime: '20 min',
+            steps: [
+              { instruction: 'Gather and prep ingredients', detail: 'Read through everything first. Wash and chop any vegetables, measure your ingredients, and have everything ready before you start.', timerSeconds: 0, timerLabel: '' },
+              { instruction: 'Season the main ingredient', detail: 'Pat any protein dry with paper towels. Season all sides with salt, pepper, and any spices. Press in so it sticks.', timerSeconds: 0, timerLabel: '' },
+              { instruction: 'Heat pan to medium-high', detail: 'Add oil to the pan and set to medium-high heat. Wait until the oil shimmers before adding food — about 1–2 minutes.', timerSeconds: 90, timerLabel: 'Heat pan' },
+              { instruction: 'Cook until done', detail: 'Add your main ingredient to the pan. Don't move it — let it sit to get a good sear. Flip halfway through and cook until done.', timerSeconds: 480, timerLabel: 'Cook' },
+              { instruction: 'Plate and serve', detail: 'Transfer to a plate. Add any garnishes. Let it rest for 1–2 minutes before eating so the juices settle.', timerSeconds: 0, timerLabel: '' },
+            ],
+          })
+        }
       }
       setLoading(false)
     }
