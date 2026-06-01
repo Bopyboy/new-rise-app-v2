@@ -19,9 +19,14 @@ export interface UserContext {
   streak: number
   rank: string
   fitnessGoal: string
+  activityLevel?: string
+  experienceLevel?: string
   weight: number
   height: number
   age: number
+  chestPR?: number
+  armsPR?: number
+  legsPR?: number
 }
 
 interface StreamRequest {

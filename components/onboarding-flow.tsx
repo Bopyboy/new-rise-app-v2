@@ -11,8 +11,6 @@ import { useApp } from '@/lib/app-context'
 import { FitnessGoal, Gender, ActivityLevel, ExperienceLevel } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-// ─── Step data ────────────────────────────────────────────────────────────────
-
 const GOALS: { id: FitnessGoal; icon: typeof Flame; label: string; desc: string; color: string }[] = [
   { id: 'lose_fat',     icon: Flame,    label: 'Lose fat',      desc: 'Calorie deficit · high protein · cardio mix',    color: 'text-orange-500' },
   { id: 'maintain',    icon: Target,   label: 'Stay lean',     desc: 'Maintain weight · build strength · feel great',   color: 'text-blue-500' },
@@ -20,11 +18,11 @@ const GOALS: { id: FitnessGoal; icon: typeof Flame; label: string; desc: string;
 ]
 
 const ACTIVITY_LEVELS: { id: ActivityLevel; label: string; desc: string; days: string }[] = [
-  { id: 'sedentary',   label: 'Sedentary',    desc: 'Desk job, mostly sitting',          days: 'Little or no exercise' },
-  { id: 'light',       label: 'Lightly active', desc: 'Walking, casual movement',       days: '1–2 days / week' },
-  { id: 'moderate',    label: 'Moderately active', desc: 'Regular gym sessions',        days: '3–4 days / week' },
-  { id: 'active',      label: 'Very active',  desc: 'Hard training most days',           days: '5–6 days / week' },
-  { id: 'very_active', label: 'Athlete',      desc: 'Physical job or twice-daily training', days: 'Daily + heavy' },
+  { id: 'sedentary',   label: 'Sedentary',       desc: 'Desk job, mostly sitting',                days: 'Little or no exercise' },
+  { id: 'light',       label: 'Lightly active',  desc: 'Walking, casual movement',                days: '1–2 days / week' },
+  { id: 'moderate',    label: 'Moderately active',desc: 'Regular gym sessions',                   days: '3–4 days / week' },
+  { id: 'active',      label: 'Very active',      desc: 'Hard training most days',                days: '5–6 days / week' },
+  { id: 'very_active', label: 'Athlete',          desc: 'Physical job or twice-daily training',   days: 'Daily + heavy' },
 ]
 
 const EXPERIENCE_LEVELS: { id: ExperienceLevel; label: string; desc: string; years: string }[] = [
@@ -33,9 +31,7 @@ const EXPERIENCE_LEVELS: { id: ExperienceLevel; label: string; desc: string; yea
   { id: 'advanced',     label: 'Advanced',     desc: 'Experienced lifter, track PRs regularly',        years: '3+ years' },
 ]
 
-const TOTAL_STEPS = 7
-
-// ─── Component ────────────────────────────────────────────────────────────────
+const TOTAL_STEPS = 8
 
 export function OnboardingFlow() {
   const { completeOnboarding } = useApp()
@@ -44,7 +40,6 @@ export function OnboardingFlow() {
   const [step, setStep] = useState(0)
   const [dir, setDir] = useState(1)
 
-  // Fields
   const [themeChoice, setThemeChoice] = useState<'dark' | 'light'>('dark')
   const [name, setName] = useState('')
   const [gender, setGender] = useState<Gender>('male')
@@ -57,31 +52,31 @@ export function OnboardingFlow() {
   const [goal, setGoal] = useState<FitnessGoal>('build_muscle')
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate')
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>('beginner')
+  const [chestPR, setChestPR] = useState('')
+  const [armsPR, setArmsPR] = useState('')
+  const [legsPR, setLegsPR] = useState('')
 
-  const getHeightCm = (): number => {
+  const weightLabel = unitSystem === 'metric' ? 'kg' : 'lbs'
+
+  const getHeightCm = () => {
     if (unitSystem === 'metric') return parseFloat(height) || 0
     return ((parseInt(heightFeet) || 0) * 12 + (parseInt(heightInches) || 0)) * 2.54
   }
 
-  const getWeightKg = (): number => {
+  const getWeightKg = () => {
     const v = parseFloat(weight) || 0
+    return unitSystem === 'metric' ? v : v / 2.205
+  }
+
+  const prToKg = (val: string) => {
+    const v = parseFloat(val) || 0
     return unitSystem === 'metric' ? v : v / 2.205
   }
 
   const canNext = (() => {
     switch (step) {
-      case 0: return true
       case 1: return name.trim().length >= 1
-      case 2: return !!gender
-      case 3: return true // units — always ok
-      case 4: {
-        const ageOk = parseInt(age) >= 13 && parseInt(age) <= 80
-        const wtOk = getWeightKg() > 20
-        const htOk = getHeightCm() > 100
-        return ageOk && wtOk && htOk
-      }
-      case 5: return true // goal — always has a default
-      case 6: return true // activity + experience — always has defaults
+      case 4: return parseInt(age) >= 13 && parseInt(age) <= 80 && getWeightKg() > 20 && getHeightCm() > 100
       default: return true
     }
   })()
@@ -102,43 +97,31 @@ export function OnboardingFlow() {
   }
 
   const finish = () => {
+    const initialPRs: { chest?: Record<string, number>; arms?: Record<string, number>; legs?: Record<string, number> } = {}
+    const chestKg = prToKg(chestPR)
+    const armsKg = prToKg(armsPR)
+    const legsKg = prToKg(legsPR)
+    if (chestKg > 0) initialPRs.chest = { 'Bench Press': chestKg }
+    if (armsKg > 0) initialPRs.arms = { 'Barbell Curl': armsKg }
+    if (legsKg > 0) initialPRs.legs = { 'Squat': legsKg }
+
     completeOnboarding(
-      {
-        name: name.trim(),
-        age: parseInt(age),
-        weight: getWeightKg(),
-        height: getHeightCm(),
-        gender,
-        fitnessGoal: goal,
-        activityLevel,
-        experienceLevel,
-      },
-      {} // no PRs required at start
+      { name: name.trim(), age: parseInt(age), weight: getWeightKg(), height: getHeightCm(), gender, fitnessGoal: goal, activityLevel, experienceLevel },
+      initialPRs
     )
   }
 
-  const stepTitles = [
-    null,
-    'What should we call you?',
-    'Quick about you',
-    'Your units',
-    'Body stats',
-    'What\'s your main goal?',
-    'Your lifestyle',
-  ]
+  const stepTitles = [null, 'What should we call you?', 'Quick about you', 'Your units', 'Body stats', "What's your main goal?", 'Your lifestyle', 'Baseline strength']
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-4 pb-8 pt-10">
       <div className="mx-auto w-full max-w-md">
 
-        {/* Header */}
         <div className="mb-8">
           {step === 0 ? (
             <>
               <h1 className="text-4xl font-bold text-foreground">Welcome to Rise</h1>
-              <p className="mt-3 text-base text-muted-foreground">
-                Your plan, your rank, your pace. Let's set everything up so Rise actually fits you.
-              </p>
+              <p className="mt-3 text-base text-muted-foreground">Your plan, your rank, your pace. Let's set everything up so Rise actually fits you.</p>
             </>
           ) : (
             <>
@@ -146,18 +129,13 @@ export function OnboardingFlow() {
               <h1 className="mt-1 text-2xl font-bold text-foreground">{stepTitles[step]}</h1>
             </>
           )}
-          {/* Progress bar */}
           <div className="mt-5 flex gap-1">
             {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-              <div
-                key={i}
-                className={cn('h-1 flex-1 rounded-full transition-colors', i <= step ? 'bg-primary' : 'bg-secondary')}
-              />
+              <div key={i} className={cn('h-1 flex-1 rounded-full transition-colors', i <= step ? 'bg-primary' : 'bg-secondary')} />
             ))}
           </div>
         </div>
 
-        {/* Step content */}
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={step}
@@ -173,22 +151,14 @@ export function OnboardingFlow() {
                 <div className="rounded-3xl border border-border bg-card px-6 py-8 text-center">
                   <Dumbbell className="mx-auto h-12 w-12 text-primary" />
                   <h2 className="mt-4 text-xl font-bold text-foreground">Rise to the top</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Personalized workouts, AI meal plans, and a rank system built on your actual lifts.
-                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">Personalized workouts, AI meal plans, and a rank system built on your actual lifts.</p>
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">Pick your theme</p>
                 <div className="grid grid-cols-2 gap-3">
                   {(['dark', 'light'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => applyTheme(t)}
-                      className={cn(
-                        'flex flex-col items-center gap-2 rounded-2xl border py-6 transition-colors',
-                        themeChoice === t ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground'
-                      )}
-                    >
+                    <button key={t} type="button" onClick={() => applyTheme(t)}
+                      className={cn('flex flex-col items-center gap-2 rounded-2xl border py-6 transition-colors',
+                        themeChoice === t ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground')}>
                       {t === 'dark' ? <Moon className="h-8 w-8" /> : <Sun className="h-8 w-8" />}
                       <span className="font-semibold capitalize">{t}</span>
                     </button>
@@ -204,14 +174,9 @@ export function OnboardingFlow() {
                   <User className="h-4 w-4" />
                   <span className="text-sm">This is how Rise will address you</span>
                 </div>
-                <input
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && go(1)}
-                  placeholder="Your name"
-                  className="w-full rounded-2xl border border-border bg-card px-4 py-3.5 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-primary"
-                  autoFocus
-                />
+                <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && go(1)}
+                  placeholder="Your name" autoFocus
+                  className="w-full rounded-2xl border border-border bg-card px-4 py-3.5 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
             )}
 
@@ -221,15 +186,9 @@ export function OnboardingFlow() {
                 <p className="text-sm text-muted-foreground">Used to calculate accurate strength standards and calorie targets</p>
                 <div className="grid grid-cols-2 gap-3">
                   {(['male', 'female'] as Gender[]).map(g => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setGender(g)}
-                      className={cn(
-                        'rounded-2xl border py-5 text-center font-semibold capitalize transition-colors',
-                        gender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground'
-                      )}
-                    >
+                    <button key={g} type="button" onClick={() => setGender(g)}
+                      className={cn('rounded-2xl border py-5 text-center font-semibold capitalize transition-colors',
+                        gender === g ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground')}>
                       {g}
                     </button>
                   ))}
@@ -242,16 +201,10 @@ export function OnboardingFlow() {
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground">Choose your preferred measurement system</p>
                 <div className="grid grid-cols-2 gap-3">
-                  {([['metric', 'kg / cm'], ['imperial', 'lbs / ft']] as const).map(([val, label]) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setUnitSystem(val)}
-                      className={cn(
-                        'rounded-2xl border py-5 text-center font-semibold transition-colors',
-                        unitSystem === val ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground'
-                      )}
-                    >
+                  {([['metric', 'kg / cm'], ['imperial', 'lbs / ft·in']] as const).map(([val, label]) => (
+                    <button key={val} type="button" onClick={() => setUnitSystem(val)}
+                      className={cn('rounded-2xl border py-5 text-center font-semibold transition-colors',
+                        unitSystem === val ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground')}>
                       {label}
                     </button>
                   ))}
@@ -263,65 +216,31 @@ export function OnboardingFlow() {
             {step === 4 && (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">Used to calculate your TDEE and personalised calorie target</p>
-
                 <div>
-                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <User className="h-4 w-4" /> Age
-                  </label>
-                  <input
-                    type="number"
-                    value={age}
-                    onChange={e => setAge(e.target.value)}
-                    placeholder="e.g. 22"
-                    className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground"><User className="h-4 w-4" /> Age</label>
+                  <input type="number" value={age} onChange={e => setAge(e.target.value)} placeholder="e.g. 22"
+                    className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
-
                 <div>
-                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <Scale className="h-4 w-4" /> Weight ({unitSystem === 'metric' ? 'kg' : 'lbs'})
-                  </label>
-                  <input
-                    type="number"
-                    value={weight}
-                    onChange={e => setWeight(e.target.value)}
-                    placeholder={unitSystem === 'metric' ? 'e.g. 75' : 'e.g. 165'}
-                    className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground"><Scale className="h-4 w-4" /> Weight ({weightLabel})</label>
+                  <input type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder={unitSystem === 'metric' ? 'e.g. 75' : 'e.g. 165'}
+                    className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
-
                 <div>
-                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <Ruler className="h-4 w-4" /> Height
-                  </label>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-muted-foreground"><Ruler className="h-4 w-4" /> Height</label>
                   {unitSystem === 'metric' ? (
-                    <input
-                      type="number"
-                      value={height}
-                      onChange={e => setHeight(e.target.value)}
-                      placeholder="e.g. 178 cm"
-                      className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
+                    <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 178 cm"
+                      className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary" />
                   ) : (
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <input
-                          type="number"
-                          value={heightFeet}
-                          onChange={e => setHeightFeet(e.target.value)}
-                          placeholder="ft"
-                          className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
+                        <input type="number" value={heightFeet} onChange={e => setHeightFeet(e.target.value)} placeholder="ft"
+                          className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary" />
                         <span className="mt-1 block text-center text-xs text-muted-foreground">feet</span>
                       </div>
                       <div className="flex-1">
-                        <input
-                          type="number"
-                          value={heightInches}
-                          onChange={e => setHeightInches(e.target.value)}
-                          placeholder="in"
-                          className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
+                        <input type="number" value={heightInches} onChange={e => setHeightInches(e.target.value)} placeholder="in"
+                          className="w-full rounded-2xl border border-border bg-card px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary" />
                         <span className="mt-1 block text-center text-xs text-muted-foreground">inches</span>
                       </div>
                     </div>
@@ -333,21 +252,13 @@ export function OnboardingFlow() {
             {/* Step 5 — Goal */}
             {step === 5 && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  This shapes your calorie target, macro split, and workout programming
-                </p>
+                <p className="text-sm text-muted-foreground">This shapes your calorie target, macro split, and workout programming</p>
                 {GOALS.map(g => {
                   const Icon = g.icon
                   return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => setGoal(g.id)}
-                      className={cn(
-                        'flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-colors',
-                        goal === g.id ? 'border-primary bg-primary/10' : 'border-border bg-card'
-                      )}
-                    >
+                    <button key={g.id} type="button" onClick={() => setGoal(g.id)}
+                      className={cn('flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-colors',
+                        goal === g.id ? 'border-primary bg-primary/10' : 'border-border bg-card')}>
                       <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary', goal === g.id && 'bg-primary/20')}>
                         <Icon className={cn('h-5 w-5', g.color)} />
                       </div>
@@ -369,7 +280,6 @@ export function OnboardingFlow() {
             {/* Step 6 — Activity + Experience */}
             {step === 6 && (
               <div className="space-y-5">
-                {/* Activity level */}
                 <div>
                   <div className="mb-3 flex items-center gap-2">
                     <Activity className="h-4 w-4 text-primary" />
@@ -377,31 +287,21 @@ export function OnboardingFlow() {
                   </div>
                   <div className="space-y-2">
                     {ACTIVITY_LEVELS.map(a => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => setActivityLevel(a.id)}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors',
-                          activityLevel === a.id ? 'border-primary bg-primary/10' : 'border-border bg-card'
-                        )}
-                      >
+                      <button key={a.id} type="button" onClick={() => setActivityLevel(a.id)}
+                        className={cn('flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors',
+                          activityLevel === a.id ? 'border-primary bg-primary/10' : 'border-border bg-card')}>
                         <div>
                           <p className="font-semibold text-foreground">{a.label}</p>
                           <p className="text-xs text-muted-foreground">{a.desc}</p>
                         </div>
-                        <span className={cn(
-                          'ml-3 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                          activityLevel === a.id ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'
-                        )}>
+                        <span className={cn('ml-3 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                          activityLevel === a.id ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground')}>
                           {a.days}
                         </span>
                       </button>
                     ))}
                   </div>
                 </div>
-
-                {/* Experience level */}
                 <div>
                   <div className="mb-3 flex items-center gap-2">
                     <Dumbbell className="h-4 w-4 text-primary" />
@@ -409,15 +309,9 @@ export function OnboardingFlow() {
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {EXPERIENCE_LEVELS.map(e => (
-                      <button
-                        key={e.id}
-                        type="button"
-                        onClick={() => setExperienceLevel(e.id)}
-                        className={cn(
-                          'flex flex-col items-center rounded-2xl border px-2 py-4 text-center transition-colors',
-                          experienceLevel === e.id ? 'border-primary bg-primary/10' : 'border-border bg-card'
-                        )}
-                      >
+                      <button key={e.id} type="button" onClick={() => setExperienceLevel(e.id)}
+                        className={cn('flex flex-col items-center rounded-2xl border px-2 py-4 text-center transition-colors',
+                          experienceLevel === e.id ? 'border-primary bg-primary/10' : 'border-border bg-card')}>
                         <p className="font-semibold text-foreground text-sm">{e.label}</p>
                         <p className="mt-1 text-[10px] text-muted-foreground leading-tight">{e.years}</p>
                       </button>
@@ -427,31 +321,54 @@ export function OnboardingFlow() {
               </div>
             )}
 
+            {/* Step 7 — Baseline PRs */}
+            {step === 7 && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground">
+                  Enter your best working weight for these three lifts — this sets your starting rank. Skip any you don't track yet.
+                </p>
+
+                {[
+                  { label: 'Bench Press', sub: 'Chest PR', emoji: '💪', bg: 'bg-red-500/15', val: chestPR, set: setChestPR, placeholder: unitSystem === 'metric' ? 'e.g. 80' : 'e.g. 175' },
+                  { label: 'Barbell Curl', sub: 'Arms PR', emoji: '💪', bg: 'bg-purple-500/15', val: armsPR, set: setArmsPR, placeholder: unitSystem === 'metric' ? 'e.g. 40' : 'e.g. 90' },
+                  { label: 'Squat', sub: 'Legs PR', emoji: '🦵', bg: 'bg-green-500/15', val: legsPR, set: setLegsPR, placeholder: unitSystem === 'metric' ? 'e.g. 100' : 'e.g. 225' },
+                ].map(({ label, sub, emoji, bg, val, set, placeholder }) => (
+                  <div key={label} className="rounded-2xl border border-border bg-card p-4">
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl text-lg', bg)}>{emoji}</div>
+                      <div>
+                        <p className="font-semibold text-foreground">{label}</p>
+                        <p className="text-xs text-muted-foreground">{sub}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="number" value={val} onChange={e => set(e.target.value)} placeholder={placeholder}
+                        className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+                      <span className="w-8 text-sm font-medium text-muted-foreground">{weightLabel}</span>
+                    </div>
+                  </div>
+                ))}
+
+                <p className="text-center text-xs text-muted-foreground">
+                  These sync with your AI workout plan and rank — you can update them anytime.
+                </p>
+              </div>
+            )}
+
           </motion.div>
         </AnimatePresence>
 
-        {/* Nav buttons */}
         <div className="mt-8 flex gap-3">
           {step > 0 && (
-            <button
-              type="button"
-              onClick={() => go(-1)}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-border bg-card py-4 font-semibold text-foreground transition-colors hover:bg-secondary"
-            >
-              <ChevronLeft className="h-5 w-5" />
-              Back
+            <button type="button" onClick={() => go(-1)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-border bg-card py-4 font-semibold text-foreground transition-colors hover:bg-secondary">
+              <ChevronLeft className="h-5 w-5" /> Back
             </button>
           )}
-          <button
-            type="button"
-            disabled={!canNext}
-            onClick={() => go(1)}
-            className={cn(
-              'flex flex-1 items-center justify-center gap-2 rounded-2xl py-4 font-bold transition-opacity',
-              canNext ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground opacity-40'
-            )}
-          >
-            {step < TOTAL_STEPS - 1 ? 'Continue' : 'Enter Rise'}
+          <button type="button" disabled={!canNext} onClick={() => go(1)}
+            className={cn('flex flex-1 items-center justify-center gap-2 rounded-2xl py-4 font-bold transition-opacity',
+              canNext ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground opacity-40')}>
+            {step === TOTAL_STEPS - 1 ? 'Enter Rise' : 'Continue'}
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
