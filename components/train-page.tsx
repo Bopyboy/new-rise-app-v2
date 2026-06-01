@@ -6,12 +6,13 @@ import { generateFitnessPlan } from '@/lib/fitness-plans'
 import { WorkoutPage } from '@/components/workout-page'
 import { BodyChartPage } from '@/components/body-chart-page'
 import { BodyCompositionPage } from '@/components/body-composition-page'
+import { ProgressPhotosPage } from '@/components/progress-photos-page'
 import { WorkoutSession } from '@/components/workout-session'
 import { WorkoutDay } from '@/lib/types'
-import { Dumbbell, Activity, Sparkles, CalendarDays, Scale, Play } from 'lucide-react'
+import { Dumbbell, Activity, Sparkles, CalendarDays, Scale, Play, Camera } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type TrainSection = 'plan' | 'workouts' | 'body' | 'composition'
+type TrainSection = 'plan' | 'workouts' | 'body' | 'composition' | 'photos'
 
 export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void }) {
   const { settings, bodyPRs, workoutSplit } = useApp()
@@ -39,6 +40,7 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
     { id: 'workouts', label: 'Workouts', icon: Dumbbell },
     { id: 'body', label: 'Body', icon: Activity },
     { id: 'composition', label: 'Body Fat', icon: Scale },
+    { id: 'photos', label: 'Photos', icon: Camera },
   ]
 
   // ── Live session view ──────────────────────────────────────────────────────
@@ -58,7 +60,7 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
         <p className="text-sm text-muted-foreground">Workouts & strength built around your PRs</p>
       </div>
 
-      <div className="flex gap-2 rounded-2xl bg-secondary/60 p-1">
+      <div className="flex gap-2 rounded-2xl bg-secondary/60 p-1 overflow-x-auto">
         {tabs.map(t => {
           const Icon = t.icon
           return (
@@ -67,7 +69,7 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
               type="button"
               onClick={() => setSection(t.id)}
               className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold transition-colors',
+                'flex flex-shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors',
                 section === t.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
               )}
             >
@@ -199,6 +201,7 @@ export function TrainPage({ onTabChange }: { onTabChange?: (tab: string) => void
       )}
       {section === 'body' && <BodyChartPage />}
       {section === 'composition' && <BodyCompositionPage />}
+      {section === 'photos' && <ProgressPhotosPage />}
     </div>
   )
 }
