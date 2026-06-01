@@ -346,7 +346,7 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
               { instruction: 'Gather and prep ingredients', detail: 'Read through everything first. Wash and chop any vegetables, measure your ingredients, and have everything ready before you start.', timerSeconds: 0, timerLabel: '' },
               { instruction: 'Season the main ingredient', detail: 'Pat any protein dry with paper towels. Season all sides with salt, pepper, and any spices. Press in so it sticks.', timerSeconds: 0, timerLabel: '' },
               { instruction: 'Heat pan to medium-high', detail: 'Add oil to the pan and set to medium-high heat. Wait until the oil shimmers before adding food — about 1–2 minutes.', timerSeconds: 90, timerLabel: 'Heat pan' },
-              { instruction: 'Cook until done', detail: 'Add your main ingredient to the pan. Don't move it — let it sit to get a good sear. Flip halfway through and cook until done.', timerSeconds: 480, timerLabel: 'Cook' },
+              { instruction: 'Cook until done', detail: 'Add your main ingredient to the pan. Don\'t move it — let it sit to get a good sear. Flip halfway through and cook until done.', timerSeconds: 480, timerLabel: 'Cook' },
               { instruction: 'Plate and serve', detail: 'Transfer to a plate. Add any garnishes. Let it rest for 1–2 minutes before eating so the juices settle.', timerSeconds: 0, timerLabel: '' },
             ],
           })
