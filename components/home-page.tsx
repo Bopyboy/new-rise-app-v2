@@ -36,20 +36,18 @@ function getTodayKey() {
   return new Date().toISOString().split('T')[0]
 }
 
-// ─── Streak Calendar ──────────────────────────────────────────────────────────
+// ─── Compact Streak Row (last 7 days only) ────────────────────────────────────
 
 function StreakCalendar() {
-  const WEEKS = 12
-  const DAYS = 7
-
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  const todayKey = today.toISOString().split('T')[0]
 
-  const dates: Date[] = []
-  for (let i = WEEKS * DAYS - 1; i >= 0; i--) {
+  const days: Date[] = []
+  for (let i = 6; i >= 0; i--) {
     const d = new Date(today)
     d.setDate(today.getDate() - i)
-    dates.push(d)
+    days.push(d)
   }
 
   const getActivity = (date: Date): 'workout' | 'nutrition' | 'both' | 'none' => {
@@ -57,15 +55,12 @@ function StreakCalendar() {
     let workout = false
     let nutrition = false
     try {
-      const wLog = localStorage.getItem(`rise-workout-${key}`)
-      if (wLog) workout = true
-
+      if (localStorage.getItem(`rise-workout-${key}`)) workout = true
       const pushup = localStorage.getItem('rise-pushup-challenge')
       if (pushup) {
         const p = JSON.parse(pushup)
         if (p.date === key && p.completed) workout = true
       }
-
       const nLog = localStorage.getItem(`rise-nutrition-${key}`)
       if (nLog) {
         const n = JSON.parse(nLog)
@@ -73,74 +68,41 @@ function StreakCalendar() {
         if (total > 0) nutrition = true
       }
     } catch {}
-
     if (workout && nutrition) return 'both'
     if (workout) return 'workout'
     if (nutrition) return 'nutrition'
     return 'none'
   }
 
-  const weeks: Date[][] = []
-  for (let w = 0; w < WEEKS; w++) {
-    weeks.push(dates.slice(w * DAYS, w * DAYS + DAYS))
-  }
-
-  const cellBg = (activity: ReturnType<typeof getActivity>) => {
-    switch (activity) {
-      case 'both': return 'bg-primary'
-      case 'workout': return 'bg-orange-500'
-      case 'nutrition': return 'bg-green-500'
-      default: return 'bg-secondary'
-    }
-  }
-
-  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-  const activeDays = dates.filter(d => getActivity(d) !== 'none').length
-  const todayKey = today.toISOString().split('T')[0]
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h3 className="font-semibold text-foreground">Activity streak</h3>
-          <p className="text-xs text-muted-foreground">{activeDays} active days · last 12 weeks</p>
-        </div>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-primary" />Both</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-orange-500" />Workout</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-green-500" />Nutrition</span>
-        </div>
-      </div>
-
-      <div className="flex gap-0.5 mb-0.5">
-        {dayLabels.map((l, i) => (
-          <div key={i} className="flex-1 text-center text-[9px] font-medium text-muted-foreground">{l}</div>
-        ))}
-      </div>
-
-      <div className="flex gap-0.5">
-        {weeks.map((week, wi) => (
-          <div key={wi} className="flex flex-1 flex-col gap-0.5">
-            {week.map((date, di) => {
-              const dateKey = date.toISOString().split('T')[0]
-              const isToday = dateKey === todayKey
-              const isFuture = date > today
-              const activity = isFuture ? 'none' : getActivity(date)
-              return (
-                <div
-                  key={di}
-                  title={date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  className={cn(
-                    'aspect-square w-full rounded-sm transition-all',
-                    isFuture ? 'bg-secondary/30' : cellBg(activity),
-                    isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-card',
-                    !isFuture && activity === 'none' && 'opacity-50'
-                  )}
-                />
-              )
-            })}
-          </div>
-        ))}
+    <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3">
+      <Flame className="h-4 w-4 shrink-0 text-orange-500" />
+      <div className="flex flex-1 items-center justify-between gap-1">
+        {days.map((date) => {
+          const key = date.toISOString().split('T')[0]
+          const isToday = key === todayKey
+          const activity = getActivity(date)
+          const dotColor =
+            activity === 'both' ? 'bg-primary' :
+            activity === 'workout' ? 'bg-orange-500' :
+            activity === 'nutrition' ? 'bg-green-500' :
+            'bg-secondary'
+          return (
+            <div key={key} className="flex flex-col items-center gap-1">
+              <span className={cn('text-[10px] font-medium', isToday ? 'text-foreground' : 'text-muted-foreground')}>
+                {dayNames[date.getDay()]}
+              </span>
+              <div className={cn(
+                'h-2.5 w-2.5 rounded-full transition-all',
+                dotColor,
+                isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-card',
+                activity === 'none' && 'opacity-40',
+              )} />
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -294,7 +256,6 @@ function PushupCameraModal({ onClose, onComplete }: {
 
     const lm = results.poseLandmarks
 
-    // Draw skeleton overlay
     ctx.strokeStyle = '#f97316'
     ctx.lineWidth = 3
     const connections = [[11,13],[13,15],[12,14],[14,16],[11,12],[23,24],[11,23],[12,24],[23,25],[24,26]]
@@ -315,7 +276,6 @@ function PushupCameraModal({ onClose, onComplete }: {
       }
     })
 
-    // Elbow angle for push-up detection
     const leftElbow = lm[11] && lm[13] && lm[15] ? getAngle(lm[11], lm[13], lm[15]) : 180
     const rightElbow = lm[12] && lm[14] && lm[16] ? getAngle(lm[12], lm[14], lm[16]) : 180
     const avgElbow = (leftElbow + rightElbow) / 2
@@ -469,8 +429,7 @@ function PushupCameraModal({ onClose, onComplete }: {
   )
 }
 
-
-// ─── Existing Daily Quest (rotating) ─────────────────────────────────────────
+// ─── Daily Quest ──────────────────────────────────────────────────────────────
 
 interface HomePageProps {
   onTabChange?: (tab: string) => void
@@ -655,6 +614,9 @@ export function HomePage({ onTabChange, onGoToFood }: HomePageProps) {
         </div>
       </section>
 
+      {/* Compact streak row */}
+      <StreakCalendar />
+
       <section className="relative overflow-hidden rounded-2xl border border-border bg-card p-5">
         <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/20 blur-3xl" />
         <div className="relative">
@@ -733,15 +695,8 @@ export function HomePage({ onTabChange, onGoToFood }: HomePageProps) {
         )}
       </div>
 
-      {/* Activity streak calendar */}
-      <StreakCalendar />
-
-      {/* Permanent daily challenge — stays every day */}
       <PushupChallengeCard />
-
-      {/* Rotating daily quest — changes each day */}
       <DailyQuestCard />
-
     </motion.div>
   )
 }
