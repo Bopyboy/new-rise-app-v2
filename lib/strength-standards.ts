@@ -8,77 +8,110 @@ export interface StrengthProfile {
   gender: Gender
 }
 
+/**
+ * Epley formula: e1RM = weight × (1 + reps / 30)
+ * For reps = 1, this returns weight unchanged.
+ * Capped at 12 reps for accuracy (beyond that reliability drops).
+ */
+export function calcE1RM(weight: number, reps: number): number {
+  if (reps <= 0 || weight <= 0) return 0
+  const r = Math.min(reps, 12)
+  if (r === 1) return weight
+  return Math.round(weight * (1 + r / 30))
+}
+
 /** Relative 1RM standards (lift ÷ bodyweight) at reference age 20, male */
 const MALE_RATIOS: Record<
   string,
-  { unit: 'lbs' | 'reps' | 'sec'; beginner: number; intermediate: number; advanced: number; elite: number; isLower?: boolean }
+  { unit: 'lbs' | 'reps' | 'sec'; beginner: number; intermediate: number; advanced: number; elite: number; isLower?: boolean; bodyweight?: boolean }
 > = {
-  bench: { unit: 'lbs', beginner: 0.75, intermediate: 1.0, advanced: 1.25, elite: 1.5 },
-  incline: { unit: 'lbs', beginner: 0.55, intermediate: 0.75, advanced: 1.0, elite: 1.2 },
-  dbfly: { unit: 'lbs', beginner: 0.12, intermediate: 0.2, advanced: 0.28, elite: 0.38 },
-  cable: { unit: 'lbs', beginner: 0.12, intermediate: 0.22, advanced: 0.32, elite: 0.45 },
-  deadlift: { unit: 'lbs', beginner: 1.0, intermediate: 1.35, advanced: 1.75, elite: 2.1, isLower: true },
-  row: { unit: 'lbs', beginner: 0.55, intermediate: 0.8, advanced: 1.05, elite: 1.3 },
-  pullup: { unit: 'reps', beginner: 3, intermediate: 8, advanced: 15, elite: 22 },
-  latpull: { unit: 'lbs', beginner: 0.45, intermediate: 0.65, advanced: 0.9, elite: 1.15 },
-  ohp: { unit: 'lbs', beginner: 0.4, intermediate: 0.55, advanced: 0.75, elite: 0.95 },
-  lateral: { unit: 'lbs', beginner: 0.08, intermediate: 0.14, advanced: 0.2, elite: 0.28 },
-  facepull: { unit: 'lbs', beginner: 0.18, intermediate: 0.28, advanced: 0.4, elite: 0.55 },
-  arnold: { unit: 'lbs', beginner: 0.18, intermediate: 0.28, advanced: 0.38, elite: 0.5 },
-  curl: { unit: 'lbs', beginner: 0.28, intermediate: 0.4, advanced: 0.55, elite: 0.68 },
-  hammer: { unit: 'lbs', beginner: 0.15, intermediate: 0.22, advanced: 0.32, elite: 0.42 },
-  pushdown: { unit: 'lbs', beginner: 0.25, intermediate: 0.38, advanced: 0.55, elite: 0.72 },
-  skull: { unit: 'lbs', beginner: 0.25, intermediate: 0.38, advanced: 0.5, elite: 0.65 },
-  squat: { unit: 'lbs', beginner: 0.9, intermediate: 1.2, advanced: 1.55, elite: 1.9, isLower: true },
-  rdl: { unit: 'lbs', beginner: 0.6, intermediate: 0.9, advanced: 1.2, elite: 1.55, isLower: true },
-  legpress: { unit: 'lbs', beginner: 1.2, intermediate: 1.8, advanced: 2.5, elite: 3.2, isLower: true },
-  calf: { unit: 'lbs', beginner: 0.6, intermediate: 1.0, advanced: 1.5, elite: 2.0, isLower: true },
-  plank: { unit: 'sec', beginner: 30, intermediate: 60, advanced: 120, elite: 180 },
-  hangleg: { unit: 'reps', beginner: 5, intermediate: 10, advanced: 18, elite: 25 },
-  abwheel: { unit: 'reps', beginner: 5, intermediate: 12, advanced: 20, elite: 30 },
-  lsit: { unit: 'sec', beginner: 10, intermediate: 20, advanced: 40, elite: 60 },
+  // CHEST
+  bench:     { unit: 'lbs', beginner: 0.75, intermediate: 1.0,  advanced: 1.25, elite: 1.5  },
+  pushup:    { unit: 'reps', beginner: 15,  intermediate: 30,   advanced: 50,   elite: 75,  bodyweight: true },
+  incline:   { unit: 'lbs', beginner: 0.55, intermediate: 0.75, advanced: 1.0,  elite: 1.2  },
+  dips:      { unit: 'reps', beginner: 8,   intermediate: 15,   advanced: 25,   elite: 40,  bodyweight: true },
+
+  // BACK
+  deadlift:  { unit: 'lbs', beginner: 1.0,  intermediate: 1.35, advanced: 1.75, elite: 2.1, isLower: true },
+  pullup:    { unit: 'reps', beginner: 3,   intermediate: 8,    advanced: 15,   elite: 22,  bodyweight: true },
+  row:       { unit: 'lbs', beginner: 0.55, intermediate: 0.8,  advanced: 1.05, elite: 1.3  },
+  latpull:   { unit: 'lbs', beginner: 0.45, intermediate: 0.65, advanced: 0.9,  elite: 1.15 },
+
+  // SHOULDERS
+  ohp:       { unit: 'lbs', beginner: 0.4,  intermediate: 0.55, advanced: 0.75, elite: 0.95 },
+  lateral:   { unit: 'lbs', beginner: 0.08, intermediate: 0.14, advanced: 0.2,  elite: 0.28 },
+  shrug:     { unit: 'lbs', beginner: 0.8,  intermediate: 1.2,  advanced: 1.6,  elite: 2.1  },
+  facepull:  { unit: 'lbs', beginner: 0.18, intermediate: 0.28, advanced: 0.4,  elite: 0.55 },
+
+  // ARMS
+  curl:      { unit: 'lbs', beginner: 0.28, intermediate: 0.4,  advanced: 0.55, elite: 0.68 },
+  hammer:    { unit: 'lbs', beginner: 0.15, intermediate: 0.22, advanced: 0.32, elite: 0.42 },
+  pushdown:  { unit: 'lbs', beginner: 0.25, intermediate: 0.38, advanced: 0.55, elite: 0.72 },
+  closebench:{ unit: 'lbs', beginner: 0.55, intermediate: 0.75, advanced: 1.0,  elite: 1.25 },
+
+  // LEGS
+  squat:     { unit: 'lbs', beginner: 0.9,  intermediate: 1.2,  advanced: 1.55, elite: 1.9, isLower: true },
+  rdl:       { unit: 'lbs', beginner: 0.6,  intermediate: 0.9,  advanced: 1.2,  elite: 1.55, isLower: true },
+  legpress:  { unit: 'lbs', beginner: 1.2,  intermediate: 1.8,  advanced: 2.5,  elite: 3.2, isLower: true },
+  lunge:     { unit: 'lbs', beginner: 0.4,  intermediate: 0.65, advanced: 0.9,  elite: 1.2, isLower: true },
+
+  // CORE
+  plank:     { unit: 'sec', beginner: 30,   intermediate: 60,   advanced: 120,  elite: 180 },
+  situp:     { unit: 'reps', beginner: 20,  intermediate: 40,   advanced: 65,   elite: 90,  bodyweight: true },
+  hangleg:   { unit: 'reps', beginner: 5,   intermediate: 10,   advanced: 18,   elite: 25,  bodyweight: true },
+  abwheel:   { unit: 'reps', beginner: 5,   intermediate: 12,   advanced: 20,   elite: 30,  bodyweight: true },
 }
 
 export const PR_EXERCISE_GROUPS = {
   chest: [
-    { id: 'bench', name: 'Bench Press' },
+    { id: 'bench',   name: 'Bench Press' },
+    { id: 'pushup',  name: 'Push-ups' },
     { id: 'incline', name: 'Incline Bench' },
-    { id: 'dbfly', name: 'Dumbbell Fly' },
-    { id: 'cable', name: 'Cable Crossover' },
+    { id: 'dips',    name: 'Dips' },
   ],
   back: [
     { id: 'deadlift', name: 'Deadlift' },
-    { id: 'row', name: 'Barbell Row' },
-    { id: 'pullup', name: 'Pull-ups' },
-    { id: 'latpull', name: 'Lat Pulldown' },
+    { id: 'pullup',   name: 'Pull-ups' },
+    { id: 'row',      name: 'Barbell Row' },
+    { id: 'latpull',  name: 'Lat Pulldown' },
   ],
   shoulders: [
-    { id: 'ohp', name: 'Overhead Press' },
-    { id: 'lateral', name: 'Lateral Raise' },
+    { id: 'ohp',      name: 'Overhead Press' },
+    { id: 'lateral',  name: 'Lateral Raise' },
+    { id: 'shrug',    name: 'Barbell Shrug' },
     { id: 'facepull', name: 'Face Pull' },
-    { id: 'arnold', name: 'Arnold Press' },
   ],
   arms: [
-    { id: 'curl', name: 'Barbell Curl' },
-    { id: 'hammer', name: 'Hammer Curl' },
-    { id: 'pushdown', name: 'Tricep Pushdown' },
-    { id: 'skull', name: 'Skull Crushers' },
+    { id: 'curl',       name: 'Barbell Curl' },
+    { id: 'hammer',     name: 'Hammer Curl' },
+    { id: 'pushdown',   name: 'Tricep Pushdown' },
+    { id: 'closebench', name: 'Close-Grip Bench' },
   ],
   legs: [
-    { id: 'squat', name: 'Squat' },
-    { id: 'rdl', name: 'Romanian Deadlift' },
+    { id: 'squat',    name: 'Squat' },
+    { id: 'rdl',      name: 'Romanian Deadlift' },
     { id: 'legpress', name: 'Leg Press' },
-    { id: 'calf', name: 'Calf Raise' },
+    { id: 'lunge',    name: 'Lunges' },
   ],
   core: [
-    { id: 'plank', name: 'Plank' },
+    { id: 'plank',   name: 'Plank' },
+    { id: 'situp',   name: 'Sit-ups' },
     { id: 'hangleg', name: 'Hanging Leg Raise' },
     { id: 'abwheel', name: 'Ab Wheel' },
-    { id: 'lsit', name: 'L-sit' },
   ],
 } as const
 
 export type PRGroup = keyof typeof PR_EXERCISE_GROUPS
+
+/** True if this exercise is bodyweight-only (reps/sec, no weight input) */
+export function isBodyweightExercise(exerciseId: string): boolean {
+  return MALE_RATIOS[exerciseId]?.bodyweight === true || MALE_RATIOS[exerciseId]?.unit === 'sec'
+}
+
+/** True if the exercise uses weight input (lbs) so reps matter for e1RM */
+export function isWeightedExercise(exerciseId: string): boolean {
+  return MALE_RATIOS[exerciseId]?.unit === 'lbs'
+}
 
 /** Younger lifters need less absolute weight for the same tier; older slightly more */
 export function getAgeFactor(age: number): number {

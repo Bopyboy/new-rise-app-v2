@@ -15,10 +15,10 @@ import { cn } from '@/lib/utils'
 type MealKey = 'breakfast' | 'lunch' | 'dinner' | 'snacks'
 
 interface CookStep {
-  instruction: string   // plain-english what to do
-  detail: string        // extra detail / tip for beginners
-  timerSeconds: number  // 0 = no timer
-  timerLabel: string    // e.g. "Grill chicken" – shown on the timer ring
+  instruction: string
+  detail: string
+  timerSeconds: number
+  timerLabel: string
 }
 
 interface RecipeData {
@@ -65,10 +65,8 @@ function TimerRing({
     <div className="flex flex-col items-center gap-4">
       <div className="relative h-40 w-40">
         <svg className="h-full w-full -rotate-90" viewBox="0 0 128 128">
-          {/* Track */}
           <circle cx="64" cy="64" r={radius} fill="none" stroke="currentColor"
             strokeWidth="8" className="text-secondary" />
-          {/* Progress */}
           <circle cx="64" cy="64" r={radius} fill="none"
             stroke={secondsLeft <= 10 ? '#ef4444' : 'oklch(0.78 0.2 132)'}
             strokeWidth="8" strokeLinecap="round"
@@ -115,7 +113,6 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
   const isLast = stepIndex === steps.length - 1
   const hasTimer = step.timerSeconds > 0
 
-  // Reset timer when step changes
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
     setTimerSeconds(step.timerSeconds)
@@ -123,7 +120,6 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
     setFinished(false)
   }, [stepIndex, step.timerSeconds])
 
-  // Countdown
   useEffect(() => {
     if (running && timerSeconds > 0) {
       intervalRef.current = setInterval(() => {
@@ -152,7 +148,6 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      {/* Step progress dots */}
       <div className="flex items-center justify-center gap-1.5 py-4">
         {steps.map((_, i) => (
           <div key={i} className={cn(
@@ -162,7 +157,6 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
         ))}
       </div>
 
-      {/* Step number badge */}
       <div className="px-5">
         <div className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-black text-primary-foreground">
@@ -174,13 +168,11 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
         </div>
       </div>
 
-      {/* Main instruction */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <h2 className="text-2xl font-black leading-snug text-foreground">
           {step.instruction}
         </h2>
 
-        {/* Beginner tip */}
         {step.detail && (
           <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-primary mb-1">💡 How to do it</p>
@@ -188,7 +180,6 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
           </div>
         )}
 
-        {/* Timer */}
         {hasTimer && (
           <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card p-6">
             <div className="flex items-center gap-1.5 mb-2">
@@ -211,7 +202,6 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
         )}
       </div>
 
-      {/* Next button */}
       <div className="border-t border-border p-5 pb-8 shrink-0">
         {hasTimer && !canGoNext ? (
           <div className="rounded-2xl bg-secondary py-4 text-center">
@@ -237,6 +227,127 @@ function GuidedCookMode({ steps, onDone }: { steps: CookStep[]; onDone: () => vo
   )
 }
 
+// ─── Fallback Recipe Builder ──────────────────────────────────────────────────
+
+type MealFlags = {
+  isNoCook: boolean; isSmoothieOrShake: boolean; isYogurtParfait: boolean
+  isOvernightOats: boolean; isColdSandwich: boolean; isColdSalad: boolean
+  isEggs: boolean; isPancakeWaffle: boolean; isOatmeal: boolean
+  isPasta: boolean; isStirFry: boolean; isChicken: boolean; isFish: boolean
+  isBeef: boolean; isSoup: boolean; isRiceDish: boolean
+  isGrilled: boolean; isBaked: boolean
+}
+
+function buildFallbackRecipe(name: string, f: MealFlags): RecipeData {
+  if (f.isSmoothieOrShake) return {
+    ingredients: ['1 scoop protein powder (whey or plant)', '1 cup whole milk or oat milk', '1 medium banana, frozen', '½ cup frozen berries', '1 tbsp peanut butter', '4–5 ice cubes'],
+    prepTime: '3 min', cookTime: '0 min',
+    steps: [
+      { instruction: 'Add liquid to blender first', detail: 'Pour the milk into the blender before anything else — this protects the blade and helps everything blend smoothly.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Add fruit and protein powder', detail: 'Drop in the frozen banana, berries, peanut butter, and protein powder. Frozen fruit is better than fresh — it makes the shake thick and cold without watering it down with ice.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Blend on high until smooth', detail: 'Blend on the highest setting for 45–60 seconds. Stop and scrape down the sides halfway through if needed. The shake should be completely smooth with no chunks.', timerSeconds: 50, timerLabel: 'Blending' },
+      { instruction: 'Pour and serve immediately', detail: 'Pour into a large glass or shaker bottle. Drink right away — protein shakes separate quickly and are best consumed fresh.', timerSeconds: 0, timerLabel: '' },
+    ],
+  }
+
+  if (f.isYogurtParfait) return {
+    ingredients: ['200g Greek yogurt (2% or full fat)', '¼ cup granola', '½ cup mixed berries (fresh or frozen/thawed)', '1 tbsp honey', '1 tbsp chia seeds', '1 tsp vanilla extract (optional)'],
+    prepTime: '5 min', cookTime: '0 min',
+    steps: [
+      { instruction: 'Stir vanilla into yogurt', detail: 'Mix the vanilla extract into the Greek yogurt in a small bowl until combined. This is optional but adds a lot of flavour depth.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Layer yogurt in a glass or bowl', detail: 'Add half the yogurt as your base layer. Use a tall glass for a parfait look, or a wide bowl for easy eating.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Add granola and berries layer', detail: 'Sprinkle half the granola over the yogurt — add it right before eating so it stays crunchy. Top with half the berries.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Repeat layers and finish with honey', detail: 'Add the remaining yogurt, then granola, then berries. Drizzle honey over the top and sprinkle chia seeds. Serve immediately.', timerSeconds: 0, timerLabel: '' },
+    ],
+  }
+
+  if (f.isOatmeal) return {
+    ingredients: ['1 cup rolled oats (not instant)', '2 cups water or milk', '1 pinch salt', '1 tbsp honey or maple syrup', '1 tsp cinnamon', 'Toppings: banana slices, nut butter, or berries'],
+    prepTime: '2 min', cookTime: '8 min',
+    steps: [
+      { instruction: 'Bring liquid and salt to a boil', detail: 'Pour water or milk into a medium saucepan with a pinch of salt. Set to medium-high heat. Milk gives creamier oatmeal; water is lighter. Watch it carefully — milk boils over quickly.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Stir in oats and reduce heat', detail: 'Once boiling, pour in the rolled oats and stir immediately. Reduce heat to medium-low. The oats will start absorbing the liquid right away.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Simmer, stirring often', detail: "Cook for 5–7 minutes, stirring every minute or so to prevent sticking. The oatmeal is ready when it's thick and creamy and pulls away slightly from the sides of the pan.", timerSeconds: 360, timerLabel: 'Simmer oats' },
+      { instruction: 'Season and add toppings', detail: 'Remove from heat. Stir in cinnamon and honey. Transfer to a bowl. Add your toppings — banana slices, a spoonful of nut butter, or fresh berries. Eat immediately while hot.', timerSeconds: 0, timerLabel: '' },
+    ],
+  }
+
+  if (f.isEggs) return {
+    ingredients: ['3 large eggs', '1 tbsp butter', '2 tbsp milk or cream', 'Salt and black pepper', 'Optional: cheese, chives, or hot sauce'],
+    prepTime: '3 min', cookTime: '5 min',
+    steps: [
+      { instruction: 'Crack and whisk eggs with milk', detail: 'Crack eggs into a bowl. Add milk, a pinch of salt, and a grind of black pepper. Whisk vigorously until the yolks and whites are fully combined and slightly frothy — about 30 seconds.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Melt butter over medium-low heat', detail: "Set a non-stick pan to medium-low heat (lower than you think). Add butter and let it melt and foam — but don't let it brown. Low heat is the secret to creamy eggs.", timerSeconds: 60, timerLabel: 'Heat pan' },
+      { instruction: 'Pour eggs and cook gently', detail: 'Pour the egg mixture into the pan. Leave it for 10–15 seconds until you see the edges just starting to set. Then use a spatula to gently push the eggs from the edges to the center in slow, wide strokes.', timerSeconds: 180, timerLabel: 'Scramble eggs' },
+      { instruction: 'Remove while still slightly wet', detail: "Pull the pan off the heat when the eggs look 80% set — they'll finish cooking from residual heat. Slightly underdone in the pan = perfectly done on the plate. Add cheese now if using.", timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Plate and season', detail: "Slide the eggs onto a warm plate. Taste and adjust salt. Garnish with chives or a dash of hot sauce. Serve immediately — scrambled eggs don't wait.", timerSeconds: 0, timerLabel: '' },
+    ],
+  }
+
+  if (f.isPasta) return {
+    ingredients: ['200g pasta (spaghetti, penne, or rigatoni)', '250g ground beef or protein of choice', '1 can (400g) crushed tomatoes', '3 garlic cloves, minced', '1 small onion, diced', '2 tbsp olive oil', 'Salt, black pepper, Italian herbs', 'Parmesan to serve'],
+    prepTime: '10 min', cookTime: '25 min',
+    steps: [
+      { instruction: 'Boil large pot of salted water', detail: "Fill your biggest pot with water and bring to a rolling boil over high heat. Season aggressively — it should taste like the sea. This is your only chance to season the pasta itself.", timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Brown protein in olive oil', detail: "Heat olive oil in a large pan over medium-high heat. Add the protein and break it apart. Don't stir too much — let it sit and brown. Browning = flavour. Drain excess fat if using beef.", timerSeconds: 300, timerLabel: 'Brown protein' },
+      { instruction: 'Sauté onion and garlic', detail: "Push protein to the side. Add onion and cook 3 minutes until soft. Add garlic and cook 60 seconds more until fragrant — don't let it burn or it turns bitter.", timerSeconds: 240, timerLabel: 'Sauté aromatics' },
+      { instruction: 'Add tomatoes and simmer sauce', detail: 'Pour in crushed tomatoes. Season with salt, pepper, and Italian herbs. Stir to combine everything. Reduce heat to low and let it simmer — the longer, the deeper the flavour.', timerSeconds: 900, timerLabel: 'Simmer sauce' },
+      { instruction: 'Cook pasta al dente', detail: "Drop pasta into the boiling water. Stir immediately so it doesn't stick. Cook 1–2 minutes LESS than the package says — it finishes cooking in the sauce.", timerSeconds: 600, timerLabel: 'Cook pasta' },
+      { instruction: 'Combine pasta with sauce', detail: 'Use tongs to transfer pasta directly into the sauce (bring some pasta water with it). Toss over medium heat for 1–2 minutes — the starchy pasta water helps the sauce cling to every strand.', timerSeconds: 90, timerLabel: 'Toss together' },
+      { instruction: 'Plate and top with parmesan', detail: 'Twist pasta into a bowl using tongs. Spoon extra sauce over. Finish with a generous grating of parmesan and a crack of black pepper. Serve hot.', timerSeconds: 0, timerLabel: '' },
+    ],
+  }
+
+  if (f.isStirFry) return {
+    ingredients: ['300g chicken breast or protein, sliced thin', '2 cups mixed vegetables (broccoli, bell pepper, snap peas)', '3 tbsp soy sauce', '1 tbsp sesame oil', '2 garlic cloves, minced', '1 tsp fresh ginger', '1 tbsp cornstarch', '2 tbsp vegetable oil', 'Cooked rice to serve'],
+    prepTime: '15 min', cookTime: '10 min',
+    steps: [
+      { instruction: 'Prep everything before you start', detail: "Slice protein thin (3–4mm), chop all vegetables, mix soy sauce + sesame oil + cornstarch in a bowl. Stir-fry moves FAST — if you're still chopping when the pan is hot, you'll burn everything.", timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Heat wok or pan until smoking', detail: 'Set heat to maximum. Add vegetable oil and wait until it shimmers and just starts to smoke — 1–2 minutes. High heat is non-negotiable for stir-fry; medium heat steams instead of sears.', timerSeconds: 90, timerLabel: 'Heat wok' },
+      { instruction: 'Sear protein and remove', detail: "Add protein in a single layer. Do NOT stir for 60 seconds — let it sear. Then toss briefly until just cooked through. Remove to a plate. It finishes cooking when you add it back.", timerSeconds: 180, timerLabel: 'Sear protein' },
+      { instruction: 'Stir-fry aromatics and vegetables', detail: 'Add a splash more oil if needed. Add garlic and ginger — stir constantly for 30 seconds. Add harder vegetables (broccoli, carrots) first, then softer ones (peppers, snap peas) 1 minute later.', timerSeconds: 180, timerLabel: 'Cook vegetables' },
+      { instruction: 'Return protein and add sauce', detail: 'Add protein back to the wok. Pour sauce over everything. Toss constantly for 60–90 seconds until the sauce thickens and coats everything with a glossy finish.', timerSeconds: 90, timerLabel: 'Sauce and toss' },
+      { instruction: 'Serve over rice immediately', detail: "Stir-fry waits for no one — serve it straight onto cooked rice. Finish with extra sesame oil or chilli flakes if desired.", timerSeconds: 0, timerLabel: '' },
+    ],
+  }
+
+  if (f.isFish) return {
+    ingredients: ['200g salmon fillet, skin-on', '1 tbsp olive oil', 'Salt, black pepper', '1 lemon', '2 garlic cloves', '1 tbsp butter', 'Fresh dill or parsley'],
+    prepTime: '5 min', cookTime: '10 min',
+    steps: [
+      { instruction: 'Pat salmon completely dry', detail: 'Use paper towels to dry the salmon thoroughly on all sides — especially the skin. Moisture is the enemy of a crispy skin. Any water left on the fish will steam it instead of searing it.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Season generously', detail: 'Season both sides with salt and black pepper. Season the skin side more aggressively. Let it sit for 2 minutes so the salt begins to draw out any remaining moisture.', timerSeconds: 120, timerLabel: 'Season and rest' },
+      { instruction: 'Heat oil in pan until shimmering', detail: 'Set a heavy-bottomed or cast iron pan over medium-high heat. Add olive oil and heat until it shimmers and you see faint wisps of smoke — about 2 minutes. This temperature is crucial for crispy skin.', timerSeconds: 120, timerLabel: 'Heat pan' },
+      { instruction: 'Place skin-side down — do not move', detail: "Lay salmon skin-side down, away from you to avoid splatter. Press gently with a spatula for 10 seconds so the whole skin makes contact. Then LEAVE IT — do not move it for the full cooking time. You'll see the salmon cooking up the sides.", timerSeconds: 240, timerLabel: 'Sear skin side' },
+      { instruction: 'Flip and add butter and garlic', detail: 'Flip the salmon once — only when the skin is golden and crispy. Add butter and garlic to the pan. Tilt the pan and spoon the foaming butter over the salmon repeatedly — this is called basting and keeps it moist.', timerSeconds: 120, timerLabel: 'Finish top side' },
+      { instruction: 'Rest and plate with lemon', detail: 'Remove from heat. Let rest on the plate for 1 minute. Squeeze fresh lemon over the top and garnish with dill or parsley. The salmon should flake easily and be just opaque in the centre.', timerSeconds: 0, timerLabel: '' },
+    ],
+  }
+
+  // Generic cooked meal fallback
+  return {
+    ingredients: [
+      `300g main protein for ${name}`,
+      '2 tbsp olive oil',
+      '3 garlic cloves, minced',
+      '1 tsp paprika',
+      'Salt and black pepper',
+      '2 cups vegetables of choice',
+      'Fresh lemon or herbs to finish',
+    ],
+    prepTime: '10 min',
+    cookTime: '20 min',
+    steps: [
+      { instruction: 'Prep and season everything', detail: 'Pat protein dry with paper towels — this is essential for browning. Season all sides with paprika, garlic, salt, and pepper. Chop any vegetables into similar-sized pieces so they cook evenly.', timerSeconds: 0, timerLabel: '' },
+      { instruction: 'Heat pan to medium-high with oil', detail: "Add olive oil to a heavy pan over medium-high heat. Wait until the oil shimmers — you'll see it ripple slightly. If you add food to a cold pan, it steams instead of sears.", timerSeconds: 90, timerLabel: 'Heat pan' },
+      { instruction: 'Sear protein — do not move it', detail: "Place protein in the pan. Don't move it for at least 3–4 minutes. A good sear = flavour. You'll know it's ready to flip when it releases naturally from the pan and has a deep golden colour.", timerSeconds: 240, timerLabel: 'Sear first side' },
+      { instruction: 'Flip and cook through', detail: 'Flip once. Add garlic to the pan around the protein. Cook until the internal temperature reaches 165°F/74°C for chicken or 145°F/63°C for pork or fish.', timerSeconds: 240, timerLabel: 'Cook second side' },
+      { instruction: 'Cook vegetables in same pan', detail: 'Remove protein and rest it. Add vegetables to the same pan — all the browned bits add flavour. Toss for 3–5 minutes until tender but still with a slight bite.', timerSeconds: 240, timerLabel: 'Cook vegetables' },
+      { instruction: 'Rest protein, then plate', detail: 'Let the protein rest for 3–5 minutes before slicing — this lets the juices redistribute so it stays moist. Slice against the grain. Plate with vegetables and a squeeze of lemon.', timerSeconds: 180, timerLabel: 'Rest' },
+    ],
+  }
+}
+
 // ─── Recipe Modal ─────────────────────────────────────────────────────────────
 
 function RecipeModal({ slot, onClose, onLog }: {
@@ -252,50 +363,112 @@ function RecipeModal({ slot, onClose, onLog }: {
   useMemo(() => {
     const fetchRecipe = async () => {
       setLoading(true)
+
+      const nameLower = slot.name.toLowerCase()
+
+      const isSmoothieOrShake = /shake|smoothie/.test(nameLower)
+      const isYogurtParfait = /yogurt|parfait/.test(nameLower)
+      const isOvernightOats = /overnight oat|chia pudding/.test(nameLower)
+      const isGranolaCereal = /granola bowl|cereal/.test(nameLower) && !/pancake|waffle/.test(nameLower)
+      const isColdSandwich = /sandwich|sub|wrap|burrito/.test(nameLower) && !/hot|grilled|pressed|melt|quesadilla/.test(nameLower)
+      const isColdSalad = /salad/.test(nameLower) && !/warm|hot/.test(nameLower)
+      const isFruitBowl = /fruit bowl|acai bowl/.test(nameLower)
+      const isNoCook = isSmoothieOrShake || isYogurtParfait || isOvernightOats || isGranolaCereal || isFruitBowl
+
+      const isEggs = /egg|omelette|omelet|frittata|scrambled|poached/.test(nameLower)
+      const isPancakeWaffle = /pancake|waffle/.test(nameLower)
+      const isOatmeal = /oatmeal|porridge|hot oat/.test(nameLower)
+      const isPasta = /pasta|spaghetti|bolognese|penne|linguine|fettuccine|lo mein|noodle/.test(nameLower)
+      const isRiceDish = /fried rice|risotto/.test(nameLower) || (/rice/.test(nameLower) && !/pudding/.test(nameLower))
+      const isChicken = /chicken/.test(nameLower)
+      const isFish = /salmon|fish|tuna melt|cod|tilapia|trout/.test(nameLower)
+      const isBeef = /beef|steak|burger|mince|bolognese/.test(nameLower)
+      const isSoup = /soup|stew|chili/.test(nameLower)
+      const isStirFry = /stir.?fry|stir fry/.test(nameLower)
+      const isGrilled = /grilled|bbq/.test(nameLower)
+      const isBaked = /baked|roasted|oven/.test(nameLower)
+
+      let cookingMethodHint = ''
+      if (isNoCook) {
+        cookingMethodHint = 'THIS IS A NO-COOK MEAL. Zero heat. Steps: measure, layer/pour, mix or blend, top and serve. Never mention a pan, stove, or oven.'
+      } else if (isSmoothieOrShake) {
+        cookingMethodHint = 'Blended drink. Steps: gather, add liquid first to blender, add fruit/protein, blend until smooth, pour, serve. No heat.'
+      } else if (isColdSandwich) {
+        cookingMethodHint = 'Cold-assembled sandwich or wrap. Steps: lay out bread/wrap, spread condiments, layer protein then veggies, wrap or close, slice, serve. No heat.'
+      } else if (isColdSalad) {
+        cookingMethodHint = 'Cold salad. Steps: wash and chop produce, prepare dressing, combine in bowl, toss. No cooking.'
+      } else if (isEggs) {
+        cookingMethodHint = 'Egg dish requiring careful heat. Include: heat pan, add butter/oil, cooking technique (fold for omelette / stir for scramble), exact timing, seasoning, plating.'
+      } else if (isPancakeWaffle) {
+        cookingMethodHint = 'Pancakes/waffles. Include: mix dry then wet ingredients separately, combine without over-mixing, preheat griddle/waffle iron, portion, cook until bubbles form then flip, serve stacked.'
+      } else if (isOatmeal) {
+        cookingMethodHint = 'Stovetop oatmeal. Steps: measure liquid, bring to boil, stir in oats, reduce heat and simmer (timer), stir occasionally until creamy, add toppings, serve.'
+      } else if (isStirFry) {
+        cookingMethodHint = 'High-heat stir-fry. Steps: prep all ingredients first (mise en place is critical), heat wok/pan until smoking, cook protein first then remove, cook aromatics, cook vegetables, return protein, add sauce, toss and serve over rice/noodles.'
+      } else if (isPasta) {
+        cookingMethodHint = 'Pasta dish. Steps: boil large salted pot of water, cook pasta al dente (timer per package), prepare sauce separately in another pan, drain pasta (reserve some pasta water), combine with sauce, toss, plate, garnish.'
+      } else if (isFish) {
+        cookingMethodHint = 'Fish cooking. Steps: pat fish completely dry, season, heat pan with oil until shimmering, place skin-side down first, press gently to stop curling, cook until skin is crispy (timer), flip carefully, cook through (timer), rest briefly, plate.'
+      } else if (isChicken && isGrilled) {
+        cookingMethodHint = 'Grilled chicken. Steps: pound to even thickness, season/marinate, preheat grill to high (timer), oil grill grates, place chicken and do not move (timer), flip once when it releases easily, cook second side (timer), check internal temp 165°F/74°C, rest 5 min before slicing.'
+      } else if (isChicken && isBaked) {
+        cookingMethodHint = 'Oven-baked chicken. Steps: preheat oven to 425°F/220°C (timer), season chicken, sear in oven-safe pan 3 min per side, transfer pan to oven and bake (timer), check internal temp 165°F/74°C, rest before serving.'
+      } else if (isChicken) {
+        cookingMethodHint = 'Pan-cooked chicken. Identify the specific method from the meal name and apply it correctly with accurate timers.'
+      } else if (isBeef && isSoup) {
+        cookingMethodHint = 'Beef stew/chili. Steps: brown beef in batches (critical for flavor), remove, sauté aromatics, add liquid, return beef, bring to boil then reduce to simmer (long timer), adjust seasoning, serve.'
+      } else if (isBeef) {
+        cookingMethodHint = 'Beef dish. Use the method implied by the name — pan-sear, grill, or slow-cook. Include doneness temps (medium-rare 135°F, medium 145°F) and mandatory resting time.'
+      } else if (isSoup) {
+        cookingMethodHint = 'Soup or stew. Steps: sauté aromatics in pot, add liquid, bring to boil (timer), add main ingredients in order of cook time, simmer (timer), season and adjust, ladle and serve.'
+      } else if (isRiceDish) {
+        cookingMethodHint = 'Rice dish. If cooking rice: rinse until clear, use 1:1.75 water ratio, bring to boil, reduce heat and cover tight (do not lift lid), steam (timer), fluff with fork. Combine with other cooked components.'
+      } else if (isBaked) {
+        cookingMethodHint = 'Oven-baked dish. Steps: preheat to correct temp, prep and season, bake (timer with temp), check doneness with thermometer or visual cue, rest before serving.'
+      } else {
+        cookingMethodHint = 'Study the exact meal name. Identify the real cooking method and write steps specific to that dish — never use a generic template.'
+      }
+
+      const prompt = `You are a professional chef writing a step-by-step cooking guide for the Rise fitness app.
+
+MEAL: "${slot.name}"
+NUTRITION TARGET: ${slot.calories} kcal | ${slot.protein}g protein | ${slot.carbs}g carbs | ${slot.fats}g fat
+
+COOKING METHOD ANALYSIS FOR THIS MEAL:
+${cookingMethodHint}
+
+Write a SPECIFIC, PROFESSIONAL recipe for THIS EXACT MEAL. Name the real ingredients, use real chef techniques, give real timers. Not a template.
+
+Respond ONLY with a valid JSON object — absolutely no markdown, no backticks, no text before or after. Exact schema:
+{
+  "ingredients": ["250g chicken breast", "2 tbsp olive oil", "..."],
+  "prepTime": "10 min",
+  "cookTime": "20 min",
+  "steps": [
+    {
+      "instruction": "Short action verb phrase (5-8 words)",
+      "detail": "Detailed, beginner-friendly explanation of exactly how to do this step. Name the actual ingredients. Give sensory cues: what to look for, smell, sound. Include common mistakes to avoid.",
+      "timerSeconds": 0,
+      "timerLabel": ""
+    }
+  ]
+}
+
+RULES:
+- INGREDIENTS: 6-10 items, exact quantities in grams/tbsp/cups. Scale to match the macro targets.
+- STEPS: 5-8 steps, each one meaningful and specific to THIS dish.
+- INSTRUCTION: Short (5-8 words). Examples: "Sear salmon skin-side down", "Fold eggs from the edges", "Boil pasta until al dente".
+- DETAIL: 2-4 sentences. Mention actual ingredient names from the recipe. Include what to look for ("golden brown", "oil shimmering", "internal temp 165°F", "pasta floats"). Explain WHY the step matters. Warn about common mistakes.
+- TIMERS: timerSeconds > 0 ONLY when you physically wait (searing, boiling, simmering, baking, resting). Zero for active steps (chopping, seasoning, stirring batter, plating).
+- NO-COOK RULE: If this meal requires no heat, DO NOT write ANY step involving a pan, stove, oven, or heat. Assemble-only steps only.
+- BE SPECIFIC: "Grilled salmon with roasted potatoes & asparagus" gets salmon steps + asparagus steps + potato steps. "Pasta bolognese" gets the actual bolognese technique. Never be generic.`
+
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            history: [{
-              role: 'user',
-              content: `Create a beginner-friendly step-by-step recipe for: "${slot.name}" (${slot.calories} cal, ${slot.protein}g protein, ${slot.carbs}g carbs, ${slot.fats}g fat).
-
-Respond ONLY with a JSON object, no markdown, no extra text. Use this exact format:
-{
-  "ingredients": ["250g chicken breast", "2 cups white rice", "..."],
-  "prepTime": "10 min",
-  "cookTime": "20 min",
-  "steps": [
-    {
-      "instruction": "Season the chicken",
-      "detail": "Pat your chicken dry with paper towels. Sprinkle both sides with salt, pepper, and garlic powder. Press the seasoning in with your hands so it sticks.",
-      "timerSeconds": 0,
-      "timerLabel": ""
-    },
-    {
-      "instruction": "Grill the chicken for 6 minutes",
-      "detail": "Place chicken on the hot grill or pan. Don't move it — let it sit so it gets a good sear. You'll know it's ready to flip when it lifts off easily.",
-      "timerSeconds": 360,
-      "timerLabel": "Grill first side"
-    },
-    {
-      "instruction": "Flip and cook other side for 5 minutes",
-      "detail": "Flip the chicken once using tongs. Cook until the internal temp reaches 165°F or the juices run clear when you cut into it.",
-      "timerSeconds": 300,
-      "timerLabel": "Grill second side"
-    }
-  ]
-}
-
-Rules:
-- 6-10 ingredients with exact quantities
-- 5-8 steps
-- timerSeconds = 0 for steps with no waiting (chopping, seasoning, plating)
-- For any step that involves waiting (boiling, grilling, baking, simmering, resting) set a realistic timerSeconds
-- Each "detail" should be very beginner-friendly — assume they have never cooked before
-CRITICAL RULES — read carefully before writing a single step:\n- Think hard about what this food actually is before writing any steps.\n- NO-COOK foods (yogurt, cottage cheese, fresh fruit, berries, smoothies, protein shakes, overnight oats, salads, deli meats, hummus, nut butters, granola bowls, cereal) must NEVER have steps like "heat a pan", "add oil", "turn on stove", or any cooking step. These are assemble-and-eat foods — steps should only be measuring, layering, mixing, or topping.\n- COLD-PREP foods (overnight oats, chia pudding, smoothies) use fridge time or blending — no heat at all.\n- Only add heat/cooking steps when the food genuinely requires it (eggs, meat, fish, cooked grains, cooked vegetables, oatmeal on stove).\n- Match the method to the food: yogurt parfait = layer in a bowl. Smoothie = blend. Oatmeal = microwave or stovetop. Grilled chicken = grill or pan. Never add a pan or oil to a no-cook food.\n- 6-10 ingredients with exact quantities\n- 4-8 steps total\n- timerSeconds = 0 for steps with no waiting (chopping, seasoning, assembling, plating)\n- For steps that genuinely involve waiting (boiling, grilling, baking, simmering, microwaving) set a realistic timerSeconds\n- Each "detail" should be very beginner-friendly — assume they have never made this before\n- Keep instructions short (5-8 words), put all detail in "detail" field`,
-            }],
+            history: [{ role: 'user', content: prompt }],
             userContext: {
               name: 'User', caloriesRemaining: 500, calorieGoal: 2000, protein: 0, proteinGoal: 150,
               carbs: 0, carbGoal: 200, fats: 0, fatGoal: 65, todayWorkout: '', streak: 0,
@@ -305,52 +478,17 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
         })
         const data = await res.json()
         const text: string = data.text ?? ''
-        const clean = text.replace(/```json|```/g, '').trim()
-        const parsed: RecipeData = JSON.parse(clean)
+        const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/)
+        const parsed: RecipeData = JSON.parse(jsonMatch ? jsonMatch[0] : text.trim())
         setRecipe(parsed)
       } catch {
-        // Smart fallback — detect no-cook foods and avoid suggesting heat/pan
-        const nameLower = slot.name.toLowerCase()
-        const isNoCook = /shake|smoothie|yogurt|parfait|berry|berries|fruit|banana|oats|overnight|chia|pudding|cereal|granola|bar |protein bar|salad|sandwich|wrap|hummus|cottage cheese|deli|cold brew|juice|bowl/.test(nameLower)
-
-        if (isNoCook) {
-          setRecipe({
-            ingredients: [
-              `1 scoop protein powder (if using)`,
-              `1 cup base liquid (milk, almond milk, or water)`,
-              `1 banana or fruit of choice`,
-              `½ cup yogurt or oats (optional)`,
-              `Ice cubes (optional)`,
-            ],
-            prepTime: '5 min',
-            cookTime: '0 min',
-            steps: [
-              { instruction: 'Gather all ingredients', detail: 'Get everything out and measured before you start. No cooking needed for this one — just assembling.', timerSeconds: 0, timerLabel: '' },
-              { instruction: 'Add ingredients to blender or bowl', detail: 'For a shake or smoothie: add liquid first, then fruit, then protein powder. For a bowl or parfait: layer ingredients in a bowl or glass.', timerSeconds: 0, timerLabel: '' },
-              { instruction: 'Blend or mix', detail: 'For shakes/smoothies: blend on high for 30–60 seconds until smooth. For bowls: stir or layer — no blending needed.', timerSeconds: 45, timerLabel: 'Blend' },
-              { instruction: 'Serve immediately', detail: 'Pour into a glass or bowl. Add any toppings like granola, nuts, or extra fruit. Best enjoyed fresh.', timerSeconds: 0, timerLabel: '' },
-            ],
-          })
-        } else {
-          setRecipe({
-            ingredients: [
-              `Main ingredient for ${slot.name}`,
-              '1 tbsp olive oil',
-              'Salt and pepper to taste',
-              'Garlic powder or seasoning of choice',
-              'Fresh herbs for garnish',
-            ],
-            prepTime: '10 min',
-            cookTime: '20 min',
-            steps: [
-              { instruction: 'Gather and prep ingredients', detail: 'Read through everything first. Wash and chop any vegetables, measure your ingredients, and have everything ready before you start.', timerSeconds: 0, timerLabel: '' },
-              { instruction: 'Season the main ingredient', detail: 'Pat any protein dry with paper towels. Season all sides with salt, pepper, and any spices. Press in so it sticks.', timerSeconds: 0, timerLabel: '' },
-              { instruction: 'Heat pan to medium-high', detail: 'Add oil to the pan and set to medium-high heat. Wait until the oil shimmers before adding food — about 1–2 minutes.', timerSeconds: 90, timerLabel: 'Heat pan' },
-              { instruction: 'Cook until done', detail: 'Add your main ingredient to the pan. Don\'t move it — let it sit to get a good sear. Flip halfway through and cook until done.', timerSeconds: 480, timerLabel: 'Cook' },
-              { instruction: 'Plate and serve', detail: 'Transfer to a plate. Add any garnishes. Let it rest for 1–2 minutes before eating so the juices settle.', timerSeconds: 0, timerLabel: '' },
-            ],
-          })
-        }
+        const fb = buildFallbackRecipe(slot.name, {
+          isNoCook, isSmoothieOrShake, isYogurtParfait, isOvernightOats,
+          isColdSandwich, isColdSalad, isEggs, isPancakeWaffle, isOatmeal,
+          isPasta, isStirFry, isChicken, isFish, isBeef, isSoup, isRiceDish,
+          isGrilled, isBaked,
+        })
+        setRecipe(fb)
       }
       setLoading(false)
     }
@@ -365,7 +503,6 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
         <div className="flex items-center gap-2">
           {mode === 'cook' ? (
@@ -396,7 +533,6 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
         </button>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -404,7 +540,6 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
         </div>
       )}
 
-      {/* Cook mode */}
       {!loading && recipe && mode === 'cook' && (
         <GuidedCookMode
           steps={recipe.steps}
@@ -412,11 +547,9 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
         />
       )}
 
-      {/* Overview mode */}
       {!loading && recipe && mode === 'overview' && (
         <>
           <div className="flex-1 overflow-y-auto">
-            {/* Hero */}
             <div className="border-b border-border bg-gradient-to-br from-primary/10 via-card to-card p-5">
               <h1 className="text-xl font-black text-foreground">{slot.name}</h1>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -439,7 +572,6 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
             </div>
 
             <div className="space-y-6 p-5">
-              {/* Ingredients */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <ShoppingBag className="h-4 w-4 text-primary" />
@@ -457,7 +589,6 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
                 </div>
               </div>
 
-              {/* Steps overview */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <ChefHat className="h-4 w-4 text-primary" />
@@ -488,7 +619,6 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
             </div>
           </div>
 
-          {/* Bottom buttons */}
           <div className="shrink-0 space-y-2 border-t border-border p-4">
             <button
               type="button"
@@ -518,7 +648,7 @@ CRITICAL RULES — read carefully before writing a single step:\n- Think hard ab
   )
 }
 
-// ─── WeeklyMealPlan (unchanged structure) ────────────────────────────────────
+// ─── WeeklyMealPlan ───────────────────────────────────────────────────────────
 
 export function WeeklyMealPlan() {
   const { settings, bodyPRs, workoutSplit, addMealEntry, getTodayTotals } = useApp()
@@ -557,7 +687,6 @@ export function WeeklyMealPlan() {
         </div>
       )}
 
-      {/* AI header */}
       <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/15 via-card to-card p-5">
         <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-primary/20 blur-2xl" />
         <div className="relative flex items-start justify-between gap-3">
@@ -592,7 +721,6 @@ export function WeeklyMealPlan() {
         </div>
       </div>
 
-      {/* Today */}
       <div className="rounded-2xl border-2 border-primary/40 bg-card p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -620,7 +748,6 @@ export function WeeklyMealPlan() {
         </div>
       </div>
 
-      {/* Full week */}
       <div className="flex items-center gap-2">
         <Calendar className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-semibold text-foreground">Full week</h3>
