@@ -9,23 +9,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 })
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  inline_data: {
-                    mime_type: mediaType || 'image/jpeg',
-                    data: imageBase64,
-                  },
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    console.log('API key exists:', !!apiKey)
+    console.log('API key prefix:', apiKey?.substring(0, 10))
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType || 'image/jpeg',
+                  data: imageBase64,
                 },
-                {
-                  text: `You are a precision nutrition analysis AI. Analyze this food image and return ONLY valid JSON, no extra text:
+              },
+              {
+                type: 'text',
+                text: `You are a precision nutrition analysis AI. Analyze this food image and return ONLY valid JSON, no extra text:
 {
   "foods": [
     {
@@ -50,26 +62,22 @@ Rules:
 - List each food item separately
 - If no food return {"foods": [], "description": "No food detected"}
 - Sanity check: calories should roughly equal (protein x 4) + (carbs x 4) + (fats x 9)`,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 1500,
+              },
+            ],
           },
-        }),
-      }
-    )
+        ],
+      }),
+    })
 
     const data = await response.json()
 
     if (!response.ok) {
-      console.error('Gemini error:', data)
+      console.error('Claude error:', JSON.stringify(data))
       return NextResponse.json({ error: data?.error?.message || 'API error' }, { status: 500 })
     }
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const text = data.content?.[0]?.text || ''
+    console.log('Claude response text:', text)
     const cleaned = text.replace(/```json|```/g, '').trim()
     const parsed = JSON.parse(cleaned)
 
