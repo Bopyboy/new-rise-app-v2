@@ -120,10 +120,12 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // Reset input so same file can be selected again
+    e.target.value = ''
+
     setIsLoading(true)
 
     try {
-      // Try to decode barcode from the captured image using ZXing WASM
       const imageUrl = URL.createObjectURL(file)
       const img = new Image()
       img.src = imageUrl
@@ -132,14 +134,16 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
         img.onload = resolve
         img.onerror = reject
       })
-
-      // Draw to canvas and decode
-      const canvas = document.createElement('canvas')
-      canvas.width = img.width
-      canvas.height = img.height
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-      ctx.drawImage(img, 0, 0)
       URL.revokeObjectURL(imageUrl)
+
+      // Resize image to max 1280px wide — iPhone photos are 4000px+ which kills ZXing
+      const MAX_WIDTH = 1280
+      const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
       // Load ZXing UMD if not already loaded
       if (!(window as any).ZXing) {
@@ -166,15 +170,42 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
       const reader = new ZXing.MultiFormatReader()
       reader.setHints(hints)
 
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const luminanceSource = new ZXing.RGBLuminanceSource(imageData.data, canvas.width, canvas.height)
-      const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource))
-      const result = reader.decode(binaryBitmap)
+      // Try full image first, then crop to center strip where barcode usually is
+      let result = null
+      const attempts = [
+        // Full image
+        () => ctx.getImageData(0, 0, canvas.width, canvas.height),
+        // Center horizontal strip
+        () => {
+          const stripHeight = Math.round(canvas.height * 0.4)
+          const stripY = Math.round(canvas.height * 0.3)
+          return ctx.getImageData(0, stripY, canvas.width, stripHeight)
+        },
+        // Center square crop
+        () => {
+          const size = Math.min(canvas.width, canvas.height)
+          const x = Math.round((canvas.width - size) / 2)
+          const y = Math.round((canvas.height - size) / 2)
+          return ctx.getImageData(x, y, size, size)
+        },
+      ]
+
+      for (const getImageData of attempts) {
+        try {
+          const imageData = getImageData()
+          const luminanceSource = new ZXing.RGBLuminanceSource(imageData.data, imageData.width, imageData.height)
+          const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource))
+          result = reader.decode(binaryBitmap)
+          if (result) break
+        } catch { /* try next crop */ }
+      }
+
+      if (!result) throw new Error('No barcode found')
 
       await lookupBarcode(result.getText())
     } catch {
       setIsLoading(false)
-      setErrorMsg("Couldn't read the barcode. Try again with better lighting, or enter the barcode number manually below.")
+      setErrorMsg("Couldn't read the barcode. Tips: get closer, make sure barcode is in focus and well lit, hold the phone steady. Or just type the number below.")
       setMode('error')
     }
   }
