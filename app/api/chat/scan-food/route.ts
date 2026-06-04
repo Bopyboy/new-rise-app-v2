@@ -9,15 +9,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 })
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    console.log('API key exists:', !!apiKey)
-    console.log('API key prefix:', apiKey?.substring(0, 10))
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey!,
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -37,17 +33,21 @@ export async function POST(req: NextRequest) {
               },
               {
                 type: 'text',
-                text: `You are a precision nutrition analysis AI. Analyze this food image and return ONLY valid JSON, no extra text:
+                text: `You are a nutrition analysis AI. Look carefully at this food image and identify exactly what you see.
+
+Be SPECIFIC and ACCURATE — do not guess if unsure. A cashew is a cashew, not a peanut. An apple is an apple, not a peach.
+
+Return ONLY valid JSON, no extra text:
 {
   "foods": [
     {
-      "name": "Specific food name",
-      "servingSize": 185,
-      "servingLabel": "1 breast (~185g)",
-      "calories": 305,
-      "protein": 57.4,
-      "carbs": 0,
-      "fats": 6.7,
+      "name": "Exact food name (be specific)",
+      "servingSize": 28,
+      "servingLabel": "small handful (~28g)",
+      "calories": 160,
+      "protein": 5.2,
+      "carbs": 9.3,
+      "fats": 13.0,
       "confidence": "high"
     }
   ],
@@ -55,13 +55,15 @@ export async function POST(req: NextRequest) {
 }
 
 Rules:
-- Estimate portion size from visual cues like plate size, utensils, packaging
+- Look carefully before naming the food — identify exact shape, color, texture
+- If you are not confident what something is, set confidence to "low" and give your best guess with a note like "possibly X"
+- Estimate portion size from visual cues (plate size, utensils, hand if visible, packaging)
 - servingSize in grams
 - All macros in grams rounded to 1 decimal
-- confidence is "high", "medium", or "low"
-- List each food item separately
-- If no food return {"foods": [], "description": "No food detected"}
-- Sanity check: calories should roughly equal (protein x 4) + (carbs x 4) + (fats x 9)`,
+- confidence: "high" = very sure, "medium" = fairly sure, "low" = uncertain
+- List each distinct food item separately
+- If no food detected return {"foods": [], "description": "No food detected"}
+- Sanity check: calories ≈ (protein × 4) + (carbs × 4) + (fats × 9)`,
               },
             ],
           },
@@ -77,7 +79,6 @@ Rules:
     }
 
     const text = data.content?.[0]?.text || ''
-    console.log('Claude response text:', text)
     const cleaned = text.replace(/```json|```/g, '').trim()
     const parsed = JSON.parse(cleaned)
 

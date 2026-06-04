@@ -41,11 +41,14 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
   const [barcodeStream, setBarcodeStream] = useState<MediaStream | null>(null)
   const [scanLine, setScanLine] = useState(0)
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [zxingReady, setZxingReady] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const barcodeVideoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const scanningRef = useRef(false)
+  const zxingRef = useRef<any>(null)
 
   const mealLabels: Record<MealType, string> = {
     breakfast: 'Breakfast',
@@ -54,13 +57,53 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     snacks: 'Snacks',
   }
 
+  // Animate scan line
   useEffect(() => {
     if (mode !== 'barcode-scan') return
     const interval = setInterval(() => {
-      setScanLine(prev => (prev >= 100 ? 0 : prev + 1))
+      setScanLine(prev => (prev >= 100 ? 0 : prev + 2))
     }, 16)
     return () => clearInterval(interval)
   }, [mode])
+
+  // Preload ZXing when barcode mode starts
+  useEffect(() => {
+    if (mode !== 'barcode-scan') return
+    loadZXing()
+  }, [mode])
+
+  const loadZXing = async () => {
+    if (zxingRef.current) { setZxingReady(true); return }
+    try {
+      // Use the UMD build which works reliably across all browsers
+      await new Promise<void>((resolve, reject) => {
+        if ((window as any).ZXing) { resolve(); return }
+        const script = document.createElement('script')
+        script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js'
+        script.onload = () => resolve()
+        script.onerror = () => reject()
+        document.head.appendChild(script)
+      })
+      const ZXing = (window as any).ZXing
+      const hints = new Map()
+      const formats = [
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E,
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+      ]
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats)
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true)
+      zxingRef.current = new ZXing.MultiFormatReader()
+      zxingRef.current.setHints(hints)
+      setZxingReady(true)
+    } catch {
+      // ZXing failed to load, manual input only
+      setZxingReady(false)
+    }
+  }
 
   const startPhotoCamera = useCallback(async () => {
     try {
@@ -77,12 +120,13 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
 
   const startBarcodeCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
       setBarcodeStream(stream)
       if (barcodeVideoRef.current) barcodeVideoRef.current.srcObject = stream
-      startBarcodeScan(stream)
     } catch {
-      // Camera not available, show manual input
+      // Camera not available, manual input still works
     }
   }, [])
 
@@ -90,6 +134,14 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     if (mode === 'camera-photo') startPhotoCamera()
     if (mode === 'barcode-scan') startBarcodeCamera()
   }, [mode, startPhotoCamera, startBarcodeCamera])
+
+  // Start scanning once both ZXing and stream are ready
+  useEffect(() => {
+    if (mode !== 'barcode-scan' || !zxingReady || !barcodeStream) return
+    scanningRef.current = true
+    scanBarcodeLoop()
+    return () => { scanningRef.current = false }
+  }, [mode, zxingReady, barcodeStream])
 
   useEffect(() => {
     return () => {
@@ -104,74 +156,54 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
   }
 
   const stopBarcodeCamera = () => {
+    scanningRef.current = false
     barcodeStream?.getTracks().forEach(t => t.stop())
     setBarcodeStream(null)
   }
 
-  // Barcode scanning — native BarcodeDetector (Chrome/Android) with canvas+ZXing fallback for iOS/Safari
-  const startBarcodeScan = async (stream: MediaStream) => {
+  const scanBarcodeLoop = () => {
     const video = barcodeVideoRef.current
-    if (!video) return
+    const reader = zxingRef.current
+    if (!video || !reader) return
 
-    await new Promise<void>(resolve => {
-      if (video.readyState >= 2) { resolve(); return }
-      video.onloadeddata = () => resolve()
-      setTimeout(resolve, 2000)
-    })
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
 
-    if ('BarcodeDetector' in window) {
-      const BarcodeDetectorAPI = (window as any).BarcodeDetector
-      let supported: string[] = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39']
-      try { supported = await BarcodeDetectorAPI.getSupportedFormats() } catch { /* use defaults */ }
-      const detector = new BarcodeDetectorAPI({ formats: supported })
-
-      let scanning = true
-      const scan = async () => {
-        if (!scanning || !stream.active) return
-        if (!video.videoWidth) { setTimeout(scan, 200); return }
-        try {
-          const barcodes = await detector.detect(video)
-          if (barcodes.length > 0) {
-            scanning = false
-            stopBarcodeCamera()
-            await lookupBarcode(barcodes[0].rawValue)
-            return
-          }
-        } catch { /* continue */ }
-        if (scanning && stream.active) requestAnimationFrame(scan)
+    const tick = () => {
+      if (!scanningRef.current) return
+      if (!video.videoWidth || video.readyState < 2) {
+        setTimeout(tick, 200)
+        return
       }
-      setTimeout(scan, 500)
-    } else {
-      // Fallback for iOS/Safari using ZXing
+
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      ctx?.drawImage(video, 0, 0)
+
       try {
-        const ZXingModule = await (Function('return import("https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/esm/index.js")')() as Promise<any>)
-        const codeReader = new ZXingModule.BrowserMultiFormatReader()
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        let scanning = true
-
-        const scanFrame = async () => {
-          if (!scanning || !stream.active) return
-          if (!video.videoWidth) { setTimeout(scanFrame, 300); return }
-          canvas.width = video.videoWidth
-          canvas.height = video.videoHeight
-          ctx?.drawImage(video, 0, 0)
-          try {
-            const result = await codeReader.decodeFromCanvas(canvas)
-            if (result) {
-              scanning = false
-              stopBarcodeCamera()
-              await lookupBarcode(result.getText())
-              return
-            }
-          } catch { /* NotFoundException is normal when no barcode in frame */ }
-          if (scanning && stream.active) setTimeout(scanFrame, 300)
+        const imageData = ctx!.getImageData(0, 0, canvas.width, canvas.height)
+        const luminanceSource = new (window as any).ZXing.RGBLuminanceSource(
+          imageData.data,
+          canvas.width,
+          canvas.height
+        )
+        const binaryBitmap = new (window as any).ZXing.BinaryBitmap(
+          new (window as any).ZXing.HybridBinarizer(luminanceSource)
+        )
+        const result = reader.decode(binaryBitmap)
+        if (result) {
+          stopBarcodeCamera()
+          lookupBarcode(result.getText())
+          return
         }
-        setTimeout(scanFrame, 800)
       } catch {
-        // ZXing unavailable — manual input still works
+        // NotFoundException is normal — no barcode in frame yet
       }
+
+      if (scanningRef.current) requestAnimationFrame(tick)
     }
+
+    setTimeout(tick, 500)
   }
 
   const capturePhoto = () => {
@@ -412,7 +444,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
                     </div>
                   </div>
                   <p className="absolute bottom-4 left-0 right-0 text-center text-xs text-white/70">
-                    {'BarcodeDetector' in window ? '🟢 Auto-scanning…' : 'Point camera at barcode'}
+                    {zxingReady ? '🟢 Scanning — hold steady...' : '⏳ Loading scanner...'}
                   </p>
                 </div>
 
