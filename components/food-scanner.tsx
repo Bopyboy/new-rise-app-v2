@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Camera, Barcode, X, ArrowLeft, Zap, CheckCircle, AlertCircle, Loader2, RefreshCw } from 'lucide-react'
+import { Camera, Barcode, X, ArrowLeft, Zap, CheckCircle, AlertCircle, Loader2, RefreshCw, ScanLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MealEntry } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -38,17 +38,13 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
   const [barcodeValue, setBarcodeValue] = useState('')
   const [servingMultiplier, setServingMultiplier] = useState(1)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
-  const [barcodeStream, setBarcodeStream] = useState<MediaStream | null>(null)
   const [scanLine, setScanLine] = useState(0)
   const [barcodeInput, setBarcodeInput] = useState('')
-  const [zxingReady, setZxingReady] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
-  const barcodeVideoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const scanningRef = useRef(false)
-  const zxingRef = useRef<any>(null)
+  const barcodeFileInputRef = useRef<HTMLInputElement>(null)
 
   const mealLabels: Record<MealType, string> = {
     breakfast: 'Breakfast',
@@ -57,7 +53,6 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     snacks: 'Snacks',
   }
 
-  // Animate scan line
   useEffect(() => {
     if (mode !== 'barcode-scan') return
     const interval = setInterval(() => {
@@ -65,45 +60,6 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     }, 16)
     return () => clearInterval(interval)
   }, [mode])
-
-  // Preload ZXing when barcode mode starts
-  useEffect(() => {
-    if (mode !== 'barcode-scan') return
-    loadZXing()
-  }, [mode])
-
-  const loadZXing = async () => {
-    if (zxingRef.current) { setZxingReady(true); return }
-    try {
-      // Use the UMD build which works reliably across all browsers
-      await new Promise<void>((resolve, reject) => {
-        if ((window as any).ZXing) { resolve(); return }
-        const script = document.createElement('script')
-        script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js'
-        script.onload = () => resolve()
-        script.onerror = () => reject()
-        document.head.appendChild(script)
-      })
-      const ZXing = (window as any).ZXing
-      const hints = new Map()
-      const formats = [
-        ZXing.BarcodeFormat.EAN_13,
-        ZXing.BarcodeFormat.EAN_8,
-        ZXing.BarcodeFormat.UPC_A,
-        ZXing.BarcodeFormat.UPC_E,
-        ZXing.BarcodeFormat.CODE_128,
-        ZXing.BarcodeFormat.CODE_39,
-      ]
-      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats)
-      hints.set(ZXing.DecodeHintType.TRY_HARDER, true)
-      zxingRef.current = new ZXing.MultiFormatReader()
-      zxingRef.current.setHints(hints)
-      setZxingReady(true)
-    } catch {
-      // ZXing failed to load, manual input only
-      setZxingReady(false)
-    }
-  }
 
   const startPhotoCamera = useCallback(async () => {
     try {
@@ -118,92 +74,17 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     }
   }, [])
 
-  const startBarcodeCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      })
-      setBarcodeStream(stream)
-      if (barcodeVideoRef.current) barcodeVideoRef.current.srcObject = stream
-    } catch {
-      // Camera not available, manual input still works
-    }
-  }, [])
-
   useEffect(() => {
     if (mode === 'camera-photo') startPhotoCamera()
-    if (mode === 'barcode-scan') startBarcodeCamera()
-  }, [mode, startPhotoCamera, startBarcodeCamera])
-
-  // Start scanning once both ZXing and stream are ready
-  useEffect(() => {
-    if (mode !== 'barcode-scan' || !zxingReady || !barcodeStream) return
-    scanningRef.current = true
-    scanBarcodeLoop()
-    return () => { scanningRef.current = false }
-  }, [mode, zxingReady, barcodeStream])
+  }, [mode, startPhotoCamera])
 
   useEffect(() => {
-    return () => {
-      cameraStream?.getTracks().forEach(t => t.stop())
-      barcodeStream?.getTracks().forEach(t => t.stop())
-    }
-  }, [cameraStream, barcodeStream])
+    return () => { cameraStream?.getTracks().forEach(t => t.stop()) }
+  }, [cameraStream])
 
   const stopCamera = () => {
     cameraStream?.getTracks().forEach(t => t.stop())
     setCameraStream(null)
-  }
-
-  const stopBarcodeCamera = () => {
-    scanningRef.current = false
-    barcodeStream?.getTracks().forEach(t => t.stop())
-    setBarcodeStream(null)
-  }
-
-  const scanBarcodeLoop = () => {
-    const video = barcodeVideoRef.current
-    const reader = zxingRef.current
-    if (!video || !reader) return
-
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-
-    const tick = () => {
-      if (!scanningRef.current) return
-      if (!video.videoWidth || video.readyState < 2) {
-        setTimeout(tick, 200)
-        return
-      }
-
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      ctx?.drawImage(video, 0, 0)
-
-      try {
-        const imageData = ctx!.getImageData(0, 0, canvas.width, canvas.height)
-        const luminanceSource = new (window as any).ZXing.RGBLuminanceSource(
-          imageData.data,
-          canvas.width,
-          canvas.height
-        )
-        const binaryBitmap = new (window as any).ZXing.BinaryBitmap(
-          new (window as any).ZXing.HybridBinarizer(luminanceSource)
-        )
-        const result = reader.decode(binaryBitmap)
-        if (result) {
-          stopBarcodeCamera()
-          lookupBarcode(result.getText())
-          return
-        }
-      } catch {
-        // NotFoundException is normal — no barcode in frame yet
-      }
-
-      if (scanningRef.current) requestAnimationFrame(tick)
-    }
-
-    setTimeout(tick, 500)
   }
 
   const capturePhoto = () => {
@@ -232,6 +113,70 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
       analyzePhoto(dataUrl)
     }
     reader.readAsDataURL(file)
+  }
+
+  // iPhone barcode: use native camera capture, read barcode from image via ZXing WASM
+  const handleBarcodeImageCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsLoading(true)
+
+    try {
+      // Try to decode barcode from the captured image using ZXing WASM
+      const imageUrl = URL.createObjectURL(file)
+      const img = new Image()
+      img.src = imageUrl
+
+      await new Promise((resolve, reject) => {
+        img.onload = resolve
+        img.onerror = reject
+      })
+
+      // Draw to canvas and decode
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(imageUrl)
+
+      // Load ZXing UMD if not already loaded
+      if (!(window as any).ZXing) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script')
+          script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js'
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('ZXing load failed'))
+          document.head.appendChild(script)
+        })
+      }
+
+      const ZXing = (window as any).ZXing
+      const hints = new Map()
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E,
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+      ])
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true)
+      const reader = new ZXing.MultiFormatReader()
+      reader.setHints(hints)
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const luminanceSource = new ZXing.RGBLuminanceSource(imageData.data, canvas.width, canvas.height)
+      const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource))
+      const result = reader.decode(binaryBitmap)
+
+      await lookupBarcode(result.getText())
+    } catch {
+      setIsLoading(false)
+      setErrorMsg("Couldn't read the barcode. Try again with better lighting, or enter the barcode number manually below.")
+      setMode('error')
+    }
   }
 
   const analyzePhoto = async (dataUrl: string) => {
@@ -294,7 +239,6 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
 
   const handleManualBarcode = () => {
     if (barcodeInput.trim().length >= 8) {
-      stopBarcodeCamera()
       lookupBarcode(barcodeInput.trim())
     }
   }
@@ -316,11 +260,11 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
 
   const goBack = () => {
     stopCamera()
-    stopBarcodeCamera()
     setCapturedImage(null)
     setScannedFoods([])
     setSelectedFood(null)
     setBarcodeInput('')
+    setIsLoading(false)
     setMode('choose')
   }
 
@@ -424,46 +368,63 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
         )}
 
         {mode === 'barcode-scan' && (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-4 p-6">
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center gap-4 p-12">
+              <div className="flex flex-col items-center justify-center gap-4 py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="font-medium">Looking up product...</p>
                 {barcodeValue && <p className="font-mono text-sm text-muted-foreground">{barcodeValue}</p>}
               </div>
             ) : (
               <>
-                <div className="relative h-64 bg-black">
-                  <video ref={barcodeVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="relative h-28 w-72 overflow-hidden rounded border-2 border-emerald-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
-                      <div
-                        className="absolute left-0 right-0 h-0.5 bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.8)] transition-none"
-                        style={{ top: `${scanLine}%` }}
-                      />
-                    </div>
+                {/* Primary: tap to open camera and scan barcode */}
+                <button
+                  onClick={() => barcodeFileInputRef.current?.click()}
+                  className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border-2 border-dashed border-emerald-400 bg-emerald-500/5 p-8 transition-all active:scale-95"
+                >
+                  <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-emerald-500/15">
+                    <Barcode className="h-10 w-10 text-emerald-500" />
+                    {/* animated scan line */}
+                    <div
+                      className="absolute left-2 right-2 h-0.5 bg-emerald-400 shadow-[0_0_6px_2px_rgba(52,211,153,0.7)]"
+                      style={{ top: `${scanLine}%`, transition: 'none' }}
+                    />
                   </div>
-                  <p className="absolute bottom-4 left-0 right-0 text-center text-xs text-white/70">
-                    {zxingReady ? '🟢 Scanning — hold steady...' : '⏳ Loading scanner...'}
-                  </p>
+                  <div className="text-center">
+                    <p className="font-semibold text-foreground">Tap to scan barcode</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Opens your camera — point at the barcode</p>
+                  </div>
+                </button>
+
+                {/* Hidden file input — capture=environment opens back camera on iPhone */}
+                <input
+                  ref={barcodeFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleBarcodeImageCapture}
+                />
+
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">or enter manually</span>
+                  <div className="h-px flex-1 bg-border" />
                 </div>
 
-                <div className="p-4">
-                  <p className="mb-3 text-center text-sm text-muted-foreground">Or enter barcode manually</p>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={barcodeInput}
-                      onChange={e => setBarcodeInput(e.target.value)}
-                      placeholder="e.g. 0049000000443"
-                      className="flex-1 rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      onKeyDown={e => e.key === 'Enter' && handleManualBarcode()}
-                    />
-                    <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 8} className="shrink-0">
-                      Search
-                    </Button>
-                  </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={barcodeInput}
+                    onChange={e => setBarcodeInput(e.target.value)}
+                    placeholder="e.g. 0049000000443"
+                    className="flex-1 rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    onKeyDown={e => e.key === 'Enter' && handleManualBarcode()}
+                  />
+                  <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 8} className="shrink-0">
+                    Search
+                  </Button>
                 </div>
               </>
             )}
@@ -520,7 +481,27 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
             </div>
             <p className="font-medium text-foreground">Scan failed</p>
             <p className="text-sm text-muted-foreground">{errorMsg}</p>
-            <Button onClick={goBack} variant="outline" className="gap-2">
+
+            {/* Always show manual entry as fallback on error */}
+            <div className="w-full space-y-2">
+              <p className="text-sm font-medium text-foreground">Enter barcode manually</p>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={barcodeInput}
+                  onChange={e => setBarcodeInput(e.target.value)}
+                  placeholder="Barcode number"
+                  className="flex-1 rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  onKeyDown={e => e.key === 'Enter' && handleManualBarcode()}
+                />
+                <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 8} className="shrink-0">
+                  Search
+                </Button>
+              </div>
+            </div>
+
+            <Button onClick={goBack} variant="outline" className="gap-2 w-full">
               <RefreshCw className="h-4 w-4" />
               Try Again
             </Button>
