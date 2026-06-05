@@ -1,50 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-export async function POST(req: NextRequest) {
+// Do NOT use edge runtime — it blocks external fetch calls on Vercel
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const barcode = searchParams.get('barcode')
+
+  if (!barcode) {
+    return NextResponse.json({ error: 'Barcode required' }, { status: 400 })
+  }
+
   try {
-    const { imageBase64, mediaType } = await req.json()
+    const response = await fetch(
+      `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
+      {
+        headers: { 'User-Agent': 'RiseApp/1.0' },
+        next: { revalidate: 86400 }, // cache for 24 hours
+      }
+    )
 
-    if (!imageBase64) {
-      return NextResponse.json({ error: 'No image provided' }, { status: 400 })
+    if (!response.ok) {
+      return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 50,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 },
-            },
-            {
-              type: 'text',
-              text: 'Read the barcode or UPC number in this image. Reply with ONLY the digits, nothing else. No spaces, no dashes. If you cannot find a barcode, reply with NONE.',
-            },
-          ],
-        }],
-      }),
-    })
 
     const data = await response.json()
-    const text = data.content?.[0]?.text?.trim() || ''
-    const barcode = text.replace(/\D/g, '')
 
-    if (!barcode || barcode.length < 6) {
-      return NextResponse.json({ error: 'No barcode found' }, { status: 404 })
+    if (data.status !== 1 || !data.product) {
+      return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ barcode })
+    const p = data.product
+    const nutriments = p.nutriments || {}
+    const servingGrams = p.serving_quantity ? parseFloat(p.serving_quantity) : 100
+
+    const result = {
+      name: p.product_name || p.product_name_en || 'Unknown Product',
+      brand: p.brands || '',
+      servingSize: servingGrams,
+      servingLabel: p.serving_size || `${servingGrams}g`,
+      calories: Math.round((nutriments['energy-kcal_100g'] || 0) * (servingGrams / 100)),
+      protein: Math.round(((nutriments.proteins_100g || 0) * (servingGrams / 100)) * 10) / 10,
+      carbs: Math.round(((nutriments.carbohydrates_100g || 0) * (servingGrams / 100)) * 10) / 10,
+      fats: Math.round(((nutriments.fat_100g || 0) * (servingGrams / 100)) * 10) / 10,
+      imageUrl: p.image_front_small_url || p.image_url || null,
+    }
+
+    return NextResponse.json(result)
   } catch (err) {
-    console.error('read-barcode error:', err)
-    return NextResponse.json({ error: 'Failed to read barcode' }, { status: 500 })
+    console.error('Barcode lookup error:', err)
+    return NextResponse.json({ error: 'Failed to fetch product' }, { status: 500 })
   }
 }
