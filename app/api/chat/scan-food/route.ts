@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { imageBase64, mediaType } = body
+    const { imageBase64, mediaType } = await req.json()
 
     if (!imageBase64) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 })
@@ -19,29 +18,24 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType || 'image/jpeg',
-                  data: imageBase64,
-                },
-              },
-              {
-                type: 'text',
-                text: `You are a nutrition analysis AI. Look carefully at this food image and identify exactly what you see.
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 },
+            },
+            {
+              type: 'text',
+              text: `You are a nutrition analysis AI. Look carefully at this food image and identify exactly what you see.
 
-Be SPECIFIC and ACCURATE — do not guess if unsure. A cashew is a cashew, not a peanut. An apple is an apple, not a peach.
+Be SPECIFIC and ACCURATE. A cashew is a cashew. A meat stick is a meat stick. Do not guess wrong.
 
 Return ONLY valid JSON, no extra text:
 {
   "foods": [
     {
-      "name": "Exact food name (be specific)",
+      "name": "Exact food name",
       "servingSize": 28,
       "servingLabel": "small handful (~28g)",
       "calories": 160,
@@ -55,19 +49,17 @@ Return ONLY valid JSON, no extra text:
 }
 
 Rules:
-- Look carefully before naming the food — identify exact shape, color, texture
-- If you are not confident what something is, set confidence to "low" and give your best guess with a note like "possibly X"
-- Estimate portion size from visual cues (plate size, utensils, hand if visible, packaging)
-- servingSize in grams
-- All macros in grams rounded to 1 decimal
-- confidence: "high" = very sure, "medium" = fairly sure, "low" = uncertain
-- List each distinct food item separately
-- If no food detected return {"foods": [], "description": "No food detected"}
+- Identify exact shape, color, texture before naming
+- If unsure, set confidence to "low"
+- Estimate portion size from visual cues
+- servingSize in grams, macros in grams to 1 decimal
+- confidence: "high", "medium", or "low"
+- List each food item separately
+- If no food return {"foods": [], "description": "No food detected"}
 - Sanity check: calories ≈ (protein × 4) + (carbs × 4) + (fats × 9)`,
-              },
-            ],
-          },
-        ],
+            },
+          ],
+        }],
       }),
     })
 
@@ -84,7 +76,7 @@ Rules:
 
     return NextResponse.json(parsed)
   } catch (err) {
-    console.error('Route error:', err)
+    console.error('scan-food error:', err)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
   }
 }

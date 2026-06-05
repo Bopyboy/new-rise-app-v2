@@ -115,7 +115,14 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     reader.readAsDataURL(file)
   }
 
-  // Use Claude to read the barcode number directly from the photo
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
   const handleBarcodeImageCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -125,7 +132,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     try {
       const base64 = await fileToBase64(file)
 
-      const res = await fetch('/api/chat/read-barcode', {
+      const res = await fetch('/api/read-barcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mediaType: file.type || 'image/jpeg' }),
@@ -133,25 +140,15 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
 
       const data = await res.json()
 
-      if (!data.barcode) {
-        throw new Error('No barcode found')
-      }
+      if (!data.barcode) throw new Error('No barcode found')
 
       await lookupBarcode(data.barcode)
     } catch {
       setIsLoading(false)
-      setErrorMsg("Couldn't read the barcode. Make sure the barcode fills most of the frame and is in focus. Or type the number below.")
+      setErrorMsg("Couldn't read the barcode. Make sure the barcode fills the frame and is in focus. Or type the number below.")
       setMode('error')
     }
   }
-
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
 
   const analyzePhoto = async (dataUrl: string) => {
     setIsLoading(true)
@@ -159,7 +156,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
       const base64 = dataUrl.split(',')[1]
       const mediaType = dataUrl.split(';')[0].split(':')[1]
 
-      const res = await fetch('/api/chat/scan-food', {
+      const res = await fetch('/api/scan-food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mediaType }),
@@ -168,7 +165,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
       const data = await res.json()
 
       if (data.error || !data.foods || data.foods.length === 0) {
-        setErrorMsg("Couldn't identify any food in this image. Try a clearer photo or enter manually.")
+        setErrorMsg("Couldn't identify any food in this image. Try a clearer photo.")
         setMode('error')
         return
       }
@@ -191,11 +188,11 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
     setBarcodeValue(code)
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/chat/barcode?barcode=${encodeURIComponent(code)}`)
+      const res = await fetch(`/api/barcode?barcode=${encodeURIComponent(code)}`)
       const data = await res.json()
 
       if (data.error) {
-        setErrorMsg(`Product not found for barcode ${code}. Try scanning again or enter manually.`)
+        setErrorMsg(`Product not found for barcode ${code}. Try again or enter manually.`)
         setMode('error')
         return
       }
@@ -212,7 +209,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
   }
 
   const handleManualBarcode = () => {
-    if (barcodeInput.trim().length >= 8) {
+    if (barcodeInput.trim().length >= 6) {
       lookupBarcode(barcodeInput.trim())
     }
   }
@@ -361,7 +358,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
                   </div>
                   <div className="text-center">
                     <p className="font-semibold text-foreground">Tap to scan barcode</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Point camera at the barcode and snap a photo</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Point camera at barcode and snap a photo</p>
                   </div>
                 </button>
 
@@ -390,7 +387,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
                     className="flex-1 rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                     onKeyDown={e => e.key === 'Enter' && handleManualBarcode()}
                   />
-                  <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 8} className="shrink-0">
+                  <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 6} className="shrink-0">
                     Search
                   </Button>
                 </div>
@@ -461,7 +458,7 @@ export function FoodScanner({ meal, onClose, onAdd }: FoodScannerProps) {
                   className="flex-1 rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   onKeyDown={e => e.key === 'Enter' && handleManualBarcode()}
                 />
-                <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 8} className="shrink-0">
+                <Button onClick={handleManualBarcode} disabled={barcodeInput.length < 6} className="shrink-0">
                   Search
                 </Button>
               </div>
